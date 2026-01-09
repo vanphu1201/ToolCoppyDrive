@@ -214,6 +214,43 @@ class DriveCopyWorker:
                 
         return files
 
+
+    def scan_folder_recursive(self, folder_id):
+        """Recursively counts files in a folder for progress bar."""
+        total = 0
+        token = None
+        query = f"'{folder_id}' in parents and trashed = false"
+        
+        # Apply strict excludes if simple enough
+        if self.excluded_strings:
+             excludes = " and ".join([f"not name contains '{s}'" for s in self.excluded_strings])
+             query += f" and ({excludes})"
+
+        while True:
+            if self.stop_signal: break
+            try:
+                results = self.service.files().list(
+                    q=query,
+                    fields='nextPageToken, files(id, mimeType)',
+                    pageToken=token,
+                    supportsAllDrives=True,
+                    includeItemsFromAllDrives=True,
+                    pageSize=1000
+                ).execute()
+                
+                files = results.get('files', [])
+                for f in files:
+                    if f['mimeType'] == 'application/vnd.google-apps.folder':
+                         total += self.scan_folder_recursive(f['id'])
+                    else:
+                         total += 1
+                
+                token = results.get('nextPageToken')
+                if not token: break
+            except Exception as e:
+                break 
+        return total
+
     def copy_file(self, dest_parent_id, file_info):
         """Copies a single file."""
         if self.stop_signal: return
@@ -271,10 +308,10 @@ class DriveCopyWorker:
         # 1. Get files in current source folder
         items = self.get_children(source_id, from_page, to_page)
         
+
         if source_id == self.root_source_id:
-             # Only set total on the first level call to avoid resetting
-             self.total_files = len(items) # Note: This is an approximation for top-level, exact recursive count is expensive
-             self._log(f"Tìm thấy {len(items)} mục trong thư mục gốc.")
+             # Logic is now handled in run_copy with pre-scan
+             pass
 
         for item in items:
             if self.stop_signal: break
@@ -328,6 +365,12 @@ class DriveCopyWorker:
             return
 
         self.root_source_id = src_id # Track root
+        
+        # New: Scan files first
+        self._log("⏳ Đang quét toàn bộ cấu trúc folder để tính toán tiến độ (vui lòng đợi)...")
+        self.total_files = self.scan_folder_recursive(src_id)
+        if self.total_files == 0: self.total_files = 1 # Avoid division by zero
+        self._log(f"Đã tìm thấy tổng cộng {self.total_files} tệp. Bắt đầu sao chép...")
         self._log(f"Bắt đầu sao chép '{root_folder_name}'...")
         
         self.process_folder(src_id, new_root_id, from_page, to_page)

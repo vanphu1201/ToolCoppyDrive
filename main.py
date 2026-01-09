@@ -76,10 +76,15 @@ async def login_google(request: Request):
         # If on Vercel, it's https://tool-coppy-drive.vercel.app/api/callback
         # Ideally we read this from Env, but for quick fix we use hardcode or request.base_url
         
-        # Hardcoding based on User Screenshot to ensure it matches what they put in Console
-        REDIRECT_URI = "https://tool-coppy-drive.vercel.app/api/callback"
+        # Determine Redirect URI dynamically based on the current request URL
+        # This allows it to work on both Localhost and Vercel automaticallly
+        base_url = str(request.base_url).rstrip("/")
+        REDIRECT_URI = f"{base_url}/api/callback"
         
         # Init worker for Auth with Redirect URI
+        # IMPORTANT: You must add this EXACT URL to Google Cloud Console "Authorized redirect URIs"
+        # Local: http://localhost:8000/api/callback
+        # Vercel: https://tool-coppy-drive.vercel.app/api/callback
         auth_worker = DriveCopyWorker(AUTH_FILE_PATH, auth_mode='user')
         auth_url = auth_worker.get_auth_url(redirect_uri=REDIRECT_URI)
         
@@ -97,7 +102,17 @@ async def auth_callback(code: str):
              auth_worker = DriveCopyWorker(AUTH_FILE_PATH, auth_mode='user')
              
              # Re-inject flow with SAME Redirect URI to exchange code
-             REDIRECT_URI = "https://tool-coppy-drive.vercel.app/api/callback"
+             # We need to reconstruct the callback URL from the current request to match
+             base_url = str(request.base_url).rstrip("/")
+             # Note: request.base_url in FastAPI/Starlette might be http even if behind https proxy on Vercel unless trusted hosts are set.
+             # However, for exchange_code, the redirect_uri string just needs to match what was sent.
+             # Ideally check 'x-forwarded-proto' if needed, but for now try request.base_url
+             
+             # Force HTTPS if we are on Vercel (heuristic)
+             if "vercel.app" in base_url and "http://" in base_url:
+                 base_url = base_url.replace("http://", "https://")
+
+             REDIRECT_URI = f"{base_url}/api/callback"
              auth_worker.get_auth_url(redirect_uri=REDIRECT_URI)
              
         creds = auth_worker.exchange_code(code)
