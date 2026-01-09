@@ -75,41 +75,40 @@ class DriveCopyWorker:
             self._log(f"Lỗi xác thực ({self.auth_mode}): {str(e)}", is_error=True)
             return None
 
-    def get_auth_url(self):
-        """Generates Auth URL for manual flow (Vercel/Cloud)."""
+    def get_auth_url(self, redirect_uri=None):
+        """Generates Auth URL for Web Flow."""
         from google_auth_oauthlib.flow import InstalledAppFlow
         SCOPES = ['https://www.googleapis.com/auth/drive']
         
-        self.flow = InstalledAppFlow.from_client_secrets_file(
-            self.auth_file, SCOPES, redirect_uri='urn:ietf:wg:oauth:2.0:oob')
+        # If no redirect_uri, default to OOB (which is now blocked for new apps, but kept for legacy)
+        r_uri = redirect_uri if redirect_uri else 'urn:ietf:wg:oauth:2.0:oob'
         
-        auth_url, _ = self.flow.authorization_url(prompt='consent')
+        self.flow = InstalledAppFlow.from_client_secrets_file(
+            self.auth_file, SCOPES, redirect_uri=r_uri)
+        
+        # Access type offline to get refresh token
+        auth_url, _ = self.flow.authorization_url(prompt='consent', access_type='offline')
         return auth_url
 
-    def submit_code(self, code):
-        """Exchanges code for token (Manual Flow)."""
+    def exchange_code(self, code):
+        """Exchanges code for token (Web Flow) and returns credentials."""
         if not hasattr(self, 'flow') or not self.flow:
-             # Try to re-init flow if missing (stateless environments)
-             from google_auth_oauthlib.flow import InstalledAppFlow
-             SCOPES = ['https://www.googleapis.com/auth/drive']
-             self.flow = InstalledAppFlow.from_client_secrets_file(
-                self.auth_file, SCOPES, redirect_uri='urn:ietf:wg:oauth:2.0:oob')
+             return None
 
         self.flow.fetch_token(code=code)
         self.creds = self.flow.credentials
         
-        # Save token
+        # Save token to file (Best effort for simple cache)
         try:
             with open('token.json', 'w') as token:
                 token.write(self.creds.to_json())
         except Exception:
-            # Fallback for Vercel (Read-only fs)
             with open('/tmp/token.json', 'w') as token:
                 token.write(self.creds.to_json())
-            
+                
         # Re-init service
         self.service = build('drive', 'v3', credentials=self.creds)
-        return True
+        return self.creds
 
     def _log(self, message, progress=None, is_error=False):
         """Helper to send updates to UI."""

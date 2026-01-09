@@ -62,51 +62,56 @@ async def startup_event():
 auth_worker = None
 
 @app.post("/api/login")
-async def login_google():
-    """Returns Auth URL for manual Vercel flow."""
+async def login_google(request: Request):
+    """Redirects to Google Auth with Vercel URL."""
     global auth_worker
     try:
-        # Check if already logged in
         if os.path.exists('token.json') or os.path.exists('/tmp/token.json'):
              return {"status": "already_logged_in"}
 
         if not os.path.exists(AUTH_FILE_PATH):
              return {"status": "error", "message": "Missing client_secret.json"}
 
-        # Init worker for Auth
-        auth_worker = DriveCopyWorker(AUTH_FILE_PATH, auth_mode='user')
-        auth_url = auth_worker.get_auth_url()
+        # Determine Redirect URI based on environment or Request
+        # If on Vercel, it's https://tool-coppy-drive.vercel.app/api/callback
+        # Ideally we read this from Env, but for quick fix we use hardcode or request.base_url
         
-        return {"status": "manual_auth_required", "auth_url": auth_url}
+        # Hardcoding based on User Screenshot to ensure it matches what they put in Console
+        REDIRECT_URI = "https://tool-coppy-drive.vercel.app/api/callback"
+        
+        # Init worker for Auth with Redirect URI
+        auth_worker = DriveCopyWorker(AUTH_FILE_PATH, auth_mode='user')
+        auth_url = auth_worker.get_auth_url(redirect_uri=REDIRECT_URI)
+        
+        return {"status": "redirect_required", "auth_url": auth_url}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-@app.post("/api/submit_code")
-async def submit_code(request: Request):
+@app.get("/api/callback")
+async def auth_callback(code: str):
+    """Handles the OAuth Callback from Google."""
     global auth_worker
     try:
-        data = await request.json()
-        code = data.get("code")
-        
         if not auth_worker:
-             # Re-init if lost (stateless serverless might break this, but usually okay for warm containers)
-             # If completely stateless, we need to rebuild flow from session, but let's try simple global first
+            # Re-init if lost (stateless)
              auth_worker = DriveCopyWorker(AUTH_FILE_PATH, auth_mode='user')
-             auth_worker.get_auth_url() # Re-init flow
              
-        success = auth_worker.submit_code(code)
-        if success:
-            # Copy token to tmp if needed
-            if os.path.exists('token.json'):
-                with open('token.json', 'r') as f:
-                    token_data = f.read()
-                with open('/tmp/token.json', 'w') as f:
-                    f.write(token_data)
-                    
-            return {"status": "success"}
-        return {"status": "error", "message": "Code verification failed"}
+             # Re-inject flow with SAME Redirect URI to exchange code
+             REDIRECT_URI = "https://tool-coppy-drive.vercel.app/api/callback"
+             auth_worker.get_auth_url(redirect_uri=REDIRECT_URI)
+             
+        creds = auth_worker.exchange_code(code)
+        
+        if creds:
+            # Redirect back to Home
+            return HTMLResponse("<script>window.location.href='/';</script>")
+        else:
+            return HTMLResponse("<h1>Lỗi xác thực!</h1><p>Không thể trao đổi mã token.</p>")
+            
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        return HTMLResponse(f"<h1>Lỗi Callback: {e}</h1>")
+
+
 
 @app.post("/api/start_copy")
 async def start_copy(request: Request):

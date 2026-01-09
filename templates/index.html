@@ -195,28 +195,16 @@
         if (btnLogin) {
             btnLogin.addEventListener('click', async (e) => {
                 e.preventDefault();
-                console.log("Btn Login Clicked");
-                btnLogin.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang lấy link...';
+                btnLogin.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang chuyển hướng...';
                 btnLogin.disabled = true;
 
                 try {
                     const res = await fetch('/api/login', { method: 'POST' });
                     const data = await res.json();
 
-                    if (data.status === 'manual_auth_required') {
-                        // Open URL
-                        const authUrl = data.auth_url;
-                        window.open(authUrl, '_blank');
-
-                        // Update UI
-                        btnLogin.innerHTML = '<i class="fas fa-check"></i> Đã mở tab';
-                        linkManual.href = authUrl;
-
-                        // Show Input Box
-                        authWarning.style.display = 'none';
-                        codeInputBox.style.display = 'block';
-                        authCodeInput.focus();
-
+                    if (data.status === 'redirect_required' || data.status === 'manual_auth_required') {
+                        // Redirect user to Google Auth
+                        window.location.href = data.auth_url;
                     } else if (data.status === 'already_logged_in') {
                         checkAuth();
                     } else {
@@ -228,43 +216,6 @@
                     alert("Lỗi kết nối server: " + err);
                     btnLogin.innerHTML = '<i class="fab fa-google"></i> Đăng nhập';
                     btnLogin.disabled = false;
-                }
-            });
-        }
-
-        // 2. Submit Code
-        if (btnSubmitCode) {
-            btnSubmitCode.addEventListener('click', async () => {
-                const code = authCodeInput.value.trim();
-                if (!code) {
-                    alert("Vui lòng dán mã code từ Google vào!");
-                    return;
-                }
-
-                btnSubmitCode.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-                btnSubmitCode.disabled = true;
-
-                try {
-                    const res = await fetch('/api/submit_code', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ code: code })
-                    });
-                    const data = await res.json();
-
-                    if (data.status === 'success') {
-                        // Success
-                        codeInputBox.style.display = 'none';
-                        checkAuth(); // Will update UI status
-                    } else {
-                        alert("Xác thực thất bại: " + data.message);
-                        btnSubmitCode.innerHTML = 'XÁC NHẬN';
-                        btnSubmitCode.disabled = false;
-                    }
-                } catch (error) {
-                    alert("Lỗi gửi code: " + error);
-                    btnSubmitCode.innerHTML = 'XÁC NHẬN';
-                    btnSubmitCode.disabled = false;
                 }
             });
         }
