@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Drive Copy Pro</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+
+<body>
+
+    <!-- Top Navigation -->
+    <nav class="navbar">
+        <div class="brand">
+            <div class="logo-icon"><i class="fas fa-folder-open"></i></div>
+            <div class="brand-text">
+                <h1>Drive Copy Pro</h1>
+                <span>Premium Edition</span>
+            </div>
+        </div>
+        <button class="vip-btn">
+            <i class="fas fa-crown"></i> VIP ACCESS
+        </button>
+    </nav>
+
+    <div class="container">
+        <div class="card">
+
+            <div class="form-header">
+                <div class="header-left">
+                    <div class="header-icon"><i class="fab fa-google-drive"></i></div>
+                    <div class="header-title">
+                        <h2>Google Drive Copy Tool</h2>
+                        <p>Sao chép thư mục từ Drive được chia sẻ sang Drive của bạn</p>
+                    </div>
+                </div>
+                <div class="status-pill" id="auth-status">● Sẵn sàng</div>
+            </div>
+
+            <!-- Login Prompt if needed -->
+            <div id="login-overlay"
+                style="display:none; text-align:center; padding: 20px; margin-bottom: 20px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 8px;">
+                <div style="color: #FCA5A5; margin-bottom: 10px;">Bạn chưa đăng nhập Google</div>
+                <button id="btn-login-now"
+                    style="background: #EF4444; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer;">Đăng
+                    nhập ngay</button>
+            </div>
+
+            <form id="copy-form">
+
+                <div class="form-group">
+                    <div class="label"><i class="fas fa-hdd"></i> Your Drive (Drive đích)</div>
+                    <input type="text" name="dest_url" placeholder="Nhập đường link folder Google Drive của bạn"
+                        required>
+                </div>
+
+                <div class="form-group">
+                    <div class="label"><i class="fas fa-share-alt"></i> Shared Drive (Drive nguồn)</div>
+                    <input type="text" name="source_url" placeholder="Nhập đường link folder Google Drive shared"
+                        required>
+                </div>
+
+                <div class="row">
+                    <div class="col form-group">
+                        <div class="label"><i class="fas fa-play"></i> Từ trang</div>
+                        <input type="number" name="from_page" value="0">
+                    </div>
+                    <div class="col form-group">
+                        <div class="label"><i class="fas fa-stop"></i> Đến trang</div>
+                        <input type="number" name="to_page" value="0">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <div class="label"><i class="fas fa-cloud-download-alt"></i> Tổng dung lượng tối đa (GB)</div>
+                    <input type="number" name="limit_size" value="500">
+                </div>
+
+                <div class="form-group">
+                    <div class="label">Bỏ file, folder có chứa (tùy chọn)</div>
+                    <input type="text" name="exclude_str" placeholder="vd: backup, temp">
+                </div>
+
+                <button type="submit" class="submit-btn" id="start-btn">
+                    KÍCH HOẠT SAO CHÉP
+                </button>
+            </form>
+
+            <div id="progress-container">
+                <div class="progress-bg">
+                    <div class="progress-fill" id="progress-fill"></div>
+                </div>
+                <div class="log-text" id="log-text">Đang kết nối...</div>
+            </div>
+
+            <!-- Instructions -->
+            <div class="info-box">
+                <div class="info-title"><i class="far fa-lightbulb"></i> Hướng dẫn</div>
+                <ul class="info-list">
+                    <li>Đặt 0 ở cả "Từ trang" và "Đến trang" để sao chép tất cả các tệp</li>
+                    <li>Để loại trừ nhiều từ khóa, phân tách bằng dấu phẩy</li>
+                    <li>Dung lượng tối đa là giới hạn cho tổng kích thước tệp (GB)</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Logic remains essentially the same, just targeting new IDs/Classes if needed
+        const form = document.getElementById('copy-form');
+        const progressContainer = document.getElementById('progress-container');
+        const progressFill = document.getElementById('progress-fill');
+        const logText = document.getElementById('log-text');
+        const startBtn = document.getElementById('start-btn');
+        const authStatus = document.getElementById('auth-status');
+        const loginOverlay = document.getElementById('login-overlay');
+        const btnLoginNow = document.getElementById('btn-login-now');
+
+        function checkAuthStatus() {
+            fetch('/api/check_auth')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.authenticated) {
+                        authStatus.textContent = "● Sẵn sàng";
+                        authStatus.style.color = "#10B981";
+                        authStatus.style.background = "rgba(16, 185, 129, 0.1)";
+                        loginOverlay.style.display = 'none';
+                        startBtn.disabled = false;
+                        startBtn.style.opacity = '1';
+                    } else {
+                        authStatus.textContent = "● Chưa kết nối";
+                        authStatus.style.color = "#EF4444";
+                        authStatus.style.background = "rgba(239, 68, 68, 0.1)";
+                        loginOverlay.style.display = 'block';
+                        startBtn.disabled = true;
+                        startBtn.style.opacity = '0.5';
+                    }
+                });
+        }
+
+        checkAuthStatus();
+        setInterval(checkAuthStatus, 3000);
+
+        btnLoginNow.addEventListener('click', async () => {
+            btnLoginNow.textContent = "Đang mở cửa sổ...";
+            await fetch('/api/login', { method: 'POST' });
+        });
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(form);
+
+            startBtn.disabled = true;
+            startBtn.textContent = "ĐANG XỬ LÝ...";
+            progressContainer.style.display = 'block';
+
+            const params = new URLSearchParams(formData);
+            const response = await fetch('/api/start_copy?' + params.toString(), { method: 'POST' });
+            const result = await response.json();
+
+            if (result.status === 'started') {
+                const eventSource = new EventSource('/api/stream_logs');
+                eventSource.onmessage = function (event) {
+                    const data = JSON.parse(event.data);
+                    if (data.done) {
+                        eventSource.close();
+                        startBtn.disabled = false;
+                        startBtn.textContent = "SAO CHÉP XONG";
+                        logText.textContent = "Hoàn tất 100%.";
+                        progressFill.style.width = "100%";
+                        return;
+                    }
+                    logText.textContent = data.message;
+                    if (data.progress) {
+                        progressFill.style.width = (data.progress * 100) + '%';
+                    }
+                };
+            }
+        });
+    </script>
+</body>
+
+</html>

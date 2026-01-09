@@ -1,0 +1,257 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+:root {
+    --bg-dark: #0B0E14;
+    /* Deepest background */
+    --card-bg: #151A23;
+    /* Card background */
+    --input-bg: #1C2333;
+    /* Input fields */
+    --input-border: #2E3648;
+    --primary-gold: #FFB02E;
+    /* Gold accent */
+    --primary-hover: #E59B20;
+    --text-white: #FFFFFF;
+    --text-gray: #94A3B8;
+    --success: #10B981;
+}
+
+body {
+    margin: 0;
+    font-family: 'Inter', sans-serif;
+    background-color: var(--bg-dark);
+    /* Subtle glow in corners matching image vibe */
+    background-image: radial-gradient(circle at 10% 0%, rgba(255, 176, 46, 0.08) 0%, transparent 40%);
+    color: var(--text-white);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Navbar */
+.navbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 24px 40px;
+}
+
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.logo-icon {
+    width: 40px;
+    height: 40px;
+    background: linear-gradient(135deg, #FFB02E, #F59E0B);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    color: #000;
+    font-weight: 800;
+}
+
+.brand-text h1 {
+    font-size: 18px;
+    margin: 0;
+    font-weight: 700;
+    color: var(--primary-gold);
+}
+
+.brand-text span {
+    font-size: 12px;
+    color: var(--text-gray);
+    display: block;
+}
+
+.vip-btn {
+    background: linear-gradient(90deg, #FFB02E, #F59E0B);
+    color: #0B0E14;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    border: none;
+    box-shadow: 0 4px 15px rgba(255, 176, 46, 0.3);
+}
+
+/* Main Content */
+.container {
+    max-width: 650px;
+    width: 90%;
+    margin: 40px auto;
+}
+
+.card {
+    background: var(--card-bg);
+    border: 1px solid var(--input-border);
+    border-radius: 16px;
+    padding: 40px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+}
+
+/* Header inside card */
+.form-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 30px;
+}
+
+.header-left {
+    display: flex;
+    gap: 15px;
+}
+
+.header-icon {
+    font-size: 24px;
+    color: var(--primary-gold);
+}
+
+.header-title h2 {
+    margin: 0;
+    font-size: 18px;
+    color: #fff;
+}
+
+.header-title p {
+    margin: 4px 0 0 0;
+    font-size: 13px;
+    color: var(--text-gray);
+}
+
+.status-pill {
+    background: rgba(16, 185, 129, 0.1);
+    color: var(--success);
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+    border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+/* Form Styles */
+.form-group {
+    margin-bottom: 24px;
+}
+
+.label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--primary-gold);
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 10px;
+}
+
+input {
+    width: 100%;
+    background: var(--input-bg);
+    border: 1px solid var(--input-border);
+    padding: 14px 16px;
+    border-radius: 8px;
+    color: #fff;
+    font-size: 14px;
+    font-family: 'Inter', sans-serif;
+    transition: all 0.2s;
+    box-sizing: border-box;
+}
+
+input:focus {
+    outline: none;
+    border-color: var(--primary-gold);
+    background: #232B3E;
+}
+
+input::placeholder {
+    color: #4B5563;
+}
+
+.row {
+    display: flex;
+    gap: 20px;
+}
+
+.col {
+    flex: 1;
+}
+
+.submit-btn {
+    width: 100%;
+    background: transparent;
+    border: 1px solid var(--primary-gold);
+    color: var(--primary-gold);
+    padding: 15px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 15px;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-top: 10px;
+}
+
+.submit-btn:hover {
+    background: var(--primary-gold);
+    color: #0B0E14;
+}
+
+/* Instruction Box */
+.info-box {
+    background: rgba(255, 176, 46, 0.05);
+    /* Very faint gold bg */
+    border: 1px solid rgba(255, 176, 46, 0.1);
+    border-radius: 12px;
+    padding: 20px;
+    margin-top: 30px;
+}
+
+.info-title {
+    color: var(--primary-gold);
+    font-weight: 600;
+    margin-bottom: 10px;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.info-list {
+    margin: 0;
+    padding-left: 20px;
+    color: var(--text-gray);
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+/* Progress */
+#progress-container {
+    margin-top: 20px;
+    display: none;
+}
+
+.progress-bg {
+    height: 6px;
+    background: #2E3648;
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 8px;
+}
+
+.progress-fill {
+    height: 100%;
+    background: var(--primary-gold);
+    width: 0%;
+    transition: width 0.3s;
+}
+
+.log-text {
+    font-size: 12px;
+    color: var(--text-gray);
+    font-family: monospace;
+}
