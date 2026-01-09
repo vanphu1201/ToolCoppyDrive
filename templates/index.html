@@ -96,6 +96,27 @@
                 <div class="log-text" id="log-text">Đang kết nối...</div>
             </div>
 
+            <!-- Auth Warning -->
+            <div class="auth-banner" id="auth-banner">
+                <span class="auth-text">⚠️ Authentication required</span>
+                <button class="auth-btn" id="btn-login">Sign in with Google</button>
+            </div>
+
+            <!-- Code Input Modal (Inline for simplicity) -->
+            <div class="auth-banner" id="code-input-box"
+                style="display:none; flex-direction: column; align-items: stretch; background: #fffbeb; border-color: #fcd34d;">
+                <div style="font-size: 13px; color: #92400e; margin-bottom: 8px;">
+                    1. Click "Sign in" above -> Allows Access.<br>
+                    2. Google gives you a code. Copy it.<br>
+                    3. Paste code below:
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <input type="text" id="auth-code-input" placeholder="Paste code (e.g. 4/0A...)" class="text-input"
+                        style="background: white;">
+                    <button class="auth-btn" id="btn-submit-code" style="background: #d97706;">Verify</button>
+                </div>
+            </div>
+
             <!-- Instructions -->
             <div class="info-box">
                 <div class="info-title"><i class="far fa-lightbulb"></i> Hướng dẫn</div>
@@ -116,37 +137,88 @@
         const logText = document.getElementById('log-text');
         const startBtn = document.getElementById('start-btn');
         const authStatus = document.getElementById('auth-status');
-        const loginOverlay = document.getElementById('login-overlay');
-        const btnLoginNow = document.getElementById('btn-login-now');
+        const loginOverlay = document.getElementById('login-overlay'); // This is the old login prompt
+        const btnLoginNow = document.getElementById('btn-login-now'); // This is the old login button
 
-        function checkAuthStatus() {
+        // New elements for the updated auth flow
+        const authBanner = document.getElementById('auth-banner');
+        const btnLogin = document.getElementById('btn-login');
+        const codeInputBox = document.getElementById('code-input-box');
+        const authCodeInput = document.getElementById('auth-code-input');
+        const btnSubmitCode = document.getElementById('btn-submit-code');
+
+        function checkAuth() {
             fetch('/api/check_auth')
-                .then(res => res.json())
+                .then(r => r.json())
                 .then(data => {
                     if (data.authenticated) {
-                        authStatus.textContent = "● Sẵn sàng";
-                        authStatus.style.color = "#10B981";
+                        authStatus.textContent = "● Authenticated";
+                        authStatus.style.color = "#10B981"; // Green
                         authStatus.style.background = "rgba(16, 185, 129, 0.1)";
-                        loginOverlay.style.display = 'none';
+                        authBanner.style.display = "none";
+                        loginOverlay.style.display = "none"; // Hide old login prompt
+                        codeInputBox.style.display = "none"; // Hide code box
                         startBtn.disabled = false;
                         startBtn.style.opacity = '1';
                     } else {
-                        authStatus.textContent = "● Chưa kết nối";
-                        authStatus.style.color = "#EF4444";
+                        authStatus.textContent = "● Not Authenticated";
+                        authStatus.style.color = "#EF4444"; // Red
                         authStatus.style.background = "rgba(239, 68, 68, 0.1)";
-                        loginOverlay.style.display = 'block';
+                        authBanner.style.display = "flex";
+                        loginOverlay.style.display = "none"; // Ensure old login prompt is hidden
                         startBtn.disabled = true;
                         startBtn.style.opacity = '0.5';
                     }
                 });
         }
 
-        checkAuthStatus();
-        setInterval(checkAuthStatus, 3000);
+        checkAuth();
+        setInterval(checkAuth, 3000);
 
-        btnLoginNow.addEventListener('click', async () => {
-            btnLoginNow.textContent = "Đang mở cửa sổ...";
-            await fetch('/api/login', { method: 'POST' });
+        btnLogin.addEventListener('click', async (e) => {
+            e.preventDefault();
+            btnLogin.textContent = "Getting Link...";
+
+            const res = await fetch('/api/login', { method: 'POST' });
+            const data = await res.json();
+
+            if (data.status === 'manual_auth_required') {
+                // Open new tab
+                window.open(data.auth_url, '_blank');
+                btnLogin.textContent = "Link Opened";
+                // Show Code Input
+                codeInputBox.style.display = "flex";
+            } else if (data.status === 'already_logged_in') {
+                checkAuth();
+            } else {
+                alert("Error: " + data.message);
+                btnLogin.textContent = "Sign in with Google";
+            }
+        });
+
+        btnSubmitCode.addEventListener('click', async () => {
+            const code = authCodeInput.value.trim();
+            if (!code) return alert("Please enter the code!");
+
+            btnSubmitCode.textContent = "Verifying...";
+            btnSubmitCode.disabled = true;
+
+            const res = await fetch('/api/submit_code', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code: code })
+            });
+            const data = await res.json();
+
+            if (data.status === 'success') {
+                alert("Login Successful!");
+                codeInputBox.style.display = 'none';
+                checkAuth();
+            } else {
+                alert("Failed: " + data.message);
+                btnSubmitCode.textContent = "Verify";
+                btnSubmitCode.disabled = false;
+            }
         });
 
         form.addEventListener('submit', async (e) => {

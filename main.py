@@ -58,30 +58,53 @@ async def startup_event():
     elif os.path.exists('client_secret.json'):
          AUTH_FILE_PATH = 'client_secret.json'
 
+# Global Worker for Auth State
+auth_worker = None
+
 @app.post("/api/login")
 async def login_google():
-    """Triggers Google Login Flow immediately."""
+    """Returns Auth URL for manual Vercel flow."""
+    global auth_worker
     try:
-        # Token path handling for Vercel (Ephemeral /tmp)
-        token_path = 'token.json'
-        # On Vercel, token might be lost on restart, but we save it to /tmp during session
-        if not os.path.exists(token_path) and os.path.exists("/tmp/token.json"):
-             token_path = "/tmp/token.json"
+        # Check if already logged in
+        if os.path.exists('token.json') or os.path.exists('/tmp/token.json'):
+             return {"status": "already_logged_in"}
 
-        if os.path.exists(token_path):
-            return {"status": "already_logged_in"}
-            
         if not os.path.exists(AUTH_FILE_PATH):
-             return {"status": "error", "message": "Missing client_secret.json (Check Env Vars)"}
+             return {"status": "error", "message": "Missing client_secret.json"}
 
-        # Run flow in a thread
-        def run_auth():
-            # Pass correct path
-            worker = DriveCopyWorker(AUTH_FILE_PATH, auth_mode='user')
+        # Init worker for Auth
+        auth_worker = DriveCopyWorker(AUTH_FILE_PATH, auth_mode='user')
+        auth_url = auth_worker.get_auth_url()
         
-        threading.Thread(target=run_auth, daemon=True).start()
+        return {"status": "manual_auth_required", "auth_url": auth_url}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@app.post("/api/submit_code")
+async def submit_code(request: Request):
+    global auth_worker
+    try:
+        data = await request.json()
+        code = data.get("code")
         
-        return {"status": "auth_triggered"}
+        if not auth_worker:
+             # Re-init if lost (stateless serverless might break this, but usually okay for warm containers)
+             # If completely stateless, we need to rebuild flow from session, but let's try simple global first
+             auth_worker = DriveCopyWorker(AUTH_FILE_PATH, auth_mode='user')
+             auth_worker.get_auth_url() # Re-init flow
+             
+        success = auth_worker.submit_code(code)
+        if success:
+            # Copy token to tmp if needed
+            if os.path.exists('token.json'):
+                with open('token.json', 'r') as f:
+                    token_data = f.read()
+                with open('/tmp/token.json', 'w') as f:
+                    f.write(token_data)
+                    
+            return {"status": "success"}
+        return {"status": "error", "message": "Code verification failed"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 

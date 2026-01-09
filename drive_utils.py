@@ -40,28 +40,37 @@ class DriveCopyWorker:
                 from google_auth_oauthlib.flow import InstalledAppFlow
                 from google.auth.transport.requests import Request
                 
-                # Check token.json
+                # Check existing token
                 if os.path.exists('token.json'):
-                    creds = Credentials.from_authorized_user_file('token.json', SCOPES)
-                
-                # If no valid creds, let user login
-                if not creds or not creds.valid:
-                    if creds and creds.expired and creds.refresh_token:
-                        creds.refresh(Request())
+                    try:
+                        self.creds = Credentials.from_authorized_user_file('token.json', SCOPES)
+                    except Exception:
+                        self.creds = None
+                elif os.path.exists('/tmp/token.json'):
+                     # Check tmp for Vercel
+                    try:
+                        self.creds = Credentials.from_authorized_user_file('/tmp/token.json', SCOPES)
+                    except Exception:
+                        self.creds = None
+
+                if not self.creds or not self.creds.valid:
+                    if self.creds and self.creds.expired and self.creds.refresh_token:
+                        self.creds.refresh(Request())
                     else:
-                        if not os.path.exists(self.auth_file):
-                            self._log(f"Thiếu file {self.auth_file} (Client Secret)", is_error=True)
-                            return None
-                            
-                        flow = InstalledAppFlow.from_client_secrets_file(
-                            self.auth_file, SCOPES)
-                        creds = flow.run_local_server(port=0)
+                        # DESKTOP MODE (Localhost)
+                        try:
+                            flow = InstalledAppFlow.from_client_secrets_file(self.credentials_file, SCOPES)
+                            self.creds = flow.run_local_server(port=0)
+                        except Exception as e:
+                            # Fallback or Error (Caller should handle manual flow if this fails)
+                            raise Exception(f"Cannot auto-login (likely on Cloud). Use Manual Flow. Error: {e}")
                     
                     # Save token
                     with open('token.json', 'w') as token:
-                        token.write(creds.to_json())
+                        token.write(self.creds.to_json())
                         
-            return build('drive', 'v3', credentials=creds)
+            self.service = build('drive', 'v3', credentials=self.creds)
+            return self.service
         except Exception as e:
             self._log(f"Lỗi xác thực ({self.auth_mode}): {str(e)}", is_error=True)
             return None
