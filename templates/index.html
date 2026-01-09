@@ -96,24 +96,37 @@
                 <div class="log-text" id="log-text">Đang kết nối...</div>
             </div>
 
-            <!-- Auth Warning -->
-            <div class="auth-banner" id="auth-banner">
-                <span class="auth-text">⚠️ Authentication required</span>
-                <button class="auth-btn" id="btn-login">Sign in with Google</button>
-            </div>
-
-            <!-- Code Input Modal (Inline for simplicity) -->
-            <div class="auth-banner" id="code-input-box"
-                style="display:none; flex-direction: column; align-items: stretch; background: #fffbeb; border-color: #fcd34d;">
-                <div style="font-size: 13px; color: #92400e; margin-bottom: 8px;">
-                    1. Click "Sign in" above -> Allows Access.<br>
-                    2. Google gives you a code. Copy it.<br>
-                    3. Paste code below:
+            <!-- Login / Auth Section -->
+            <div id="auth-section" style="margin-bottom: 25px;">
+                <!-- 1. Not Authenticated Warning -->
+                <div id="auth-warning"
+                    style="display: flex; justify-content: space-between; align-items: center; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); padding: 12px 20px; border-radius: 8px;">
+                    <div style="color: #EF4444; font-weight: 500; display: flex; align-items: center; gap: 8px;">
+                        <i class="fas fa-exclamation-triangle"></i> Chưa kết nối Google Drive
+                    </div>
+                    <button id="btn-login"
+                        style="background: #EF4444; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 600; cursor: pointer;">
+                        <i class="fab fa-google"></i> Đăng nhập
+                    </button>
                 </div>
-                <div style="display: flex; gap: 8px;">
-                    <input type="text" id="auth-code-input" placeholder="Paste code (e.g. 4/0A...)" class="text-input"
-                        style="background: white;">
-                    <button class="auth-btn" id="btn-submit-code" style="background: #d97706;">Verify</button>
+
+                <!-- 2. Manual Code Input (Hidden by default) -->
+                <div id="code-input-box"
+                    style="display: none; margin-top: 15px; background: #1C2333; padding: 20px; border-radius: 8px; border: 1px solid #FFB02E;">
+                    <div style="color: #FFB02E; font-size: 14px; margin-bottom: 12px;">
+                        <strong><i class="fas fa-key"></i> Xác thực thủ công:</strong><br>
+                        <span style="color: #94A3B8; font-size: 13px;">1. Cửa sổ đăng nhập đã mở (hoặc <a href="#"
+                                id="link-manual" target="_blank" style="color: #60A5FA;">bấm vào đây</a>).<br>2. Copy mã
+                            từ Google và dán vào bên dưới:</span>
+                    </div>
+                    <div style="display: flex; gap: 10px;">
+                        <input type="text" id="auth-code-input" placeholder="Dán mã vào đây (4/0A...)"
+                            style="flex: 1; background: #0B0E14; border: 1px solid #2E3648;">
+                        <button id="btn-submit-code"
+                            style="background: #FFB02E; color: #000; border: none; padding: 0 20px; border-radius: 6px; font-weight: 700; cursor: pointer;">
+                            XÁC NHẬN
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -135,121 +148,184 @@
         const progressContainer = document.getElementById('progress-container');
         const progressFill = document.getElementById('progress-fill');
         const logText = document.getElementById('log-text');
-        const startBtn = document.getElementById('start-btn');
         const authStatus = document.getElementById('auth-status');
         const loginOverlay = document.getElementById('login-overlay'); // This is the old login prompt
         const btnLoginNow = document.getElementById('btn-login-now'); // This is the old login button
 
         // New elements for the updated auth flow
-        const authBanner = document.getElementById('auth-banner');
+        // Elements
+        const authSection = document.getElementById('auth-section');
+        const authWarning = document.getElementById('auth-warning');
         const btnLogin = document.getElementById('btn-login');
         const codeInputBox = document.getElementById('code-input-box');
         const authCodeInput = document.getElementById('auth-code-input');
         const btnSubmitCode = document.getElementById('btn-submit-code');
+        const linkManual = document.getElementById('link-manual');
 
+        const startBtn = document.getElementById('start-btn');
+        const form = document.getElementById('copy-form');
+        const progressContainer = document.getElementById('progress-container');
+        const progressFill = document.getElementById('progress-fill');
+        const logText = document.getElementById('log-text');
+
+        // Check Auth Loop
         function checkAuth() {
             fetch('/api/check_auth')
                 .then(r => r.json())
                 .then(data => {
                     if (data.authenticated) {
-                        authStatus.textContent = "● Authenticated";
-                        authStatus.style.color = "#10B981"; // Green
+                        // Logged In
+                        authStatus.innerHTML = '<i class="fas fa-check-circle"></i> Sẵn sàng';
+                        authStatus.style.color = "#10B981";
                         authStatus.style.background = "rgba(16, 185, 129, 0.1)";
-                        authBanner.style.display = "none";
-                        loginOverlay.style.display = "none"; // Hide old login prompt
-                        codeInputBox.style.display = "none"; // Hide code box
+                        authStatus.style.borderColor = "rgba(16, 185, 129, 0.2)";
+
+                        authSection.style.display = 'none'; // Hide all auth UI
                         startBtn.disabled = false;
                         startBtn.style.opacity = '1';
+                        startBtn.style.cursor = 'pointer';
                     } else {
-                        authStatus.textContent = "● Not Authenticated";
-                        authStatus.style.color = "#EF4444"; // Red
+                        // Not Logged In
+                        authStatus.innerHTML = '<i class="fas fa-times-circle"></i> Chưa kết nối';
+                        authStatus.style.color = "#EF4444";
                         authStatus.style.background = "rgba(239, 68, 68, 0.1)";
-                        authBanner.style.display = "flex";
-                        loginOverlay.style.display = "none"; // Ensure old login prompt is hidden
+                        authStatus.style.borderColor = "rgba(239, 68, 68, 0.2)";
+
+                        authSection.style.display = 'block';
+                        authWarning.style.display = 'flex';
+                        // Keep code box hidden until click
                         startBtn.disabled = true;
                         startBtn.style.opacity = '0.5';
+                        startBtn.style.cursor = 'not-allowed';
                     }
-                });
+                })
+                .catch(err => console.error("Auth Check Error:", err));
         }
 
-        checkAuth();
         setInterval(checkAuth, 3000);
+        checkAuth();
 
+        // 1. Click Login -> Get URL -> Open & Show Input
         btnLogin.addEventListener('click', async (e) => {
             e.preventDefault();
-            btnLogin.textContent = "Getting Link...";
+            btnLogin.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang lấy link...';
+            btnLogin.disabled = true;
 
-            const res = await fetch('/api/login', { method: 'POST' });
-            const data = await res.json();
+            try {
+                const res = await fetch('/api/login', { method: 'POST' });
+                const data = await res.json();
 
-            if (data.status === 'manual_auth_required') {
-                // Open new tab
-                window.open(data.auth_url, '_blank');
-                btnLogin.textContent = "Link Opened";
-                // Show Code Input
-                codeInputBox.style.display = "flex";
-            } else if (data.status === 'already_logged_in') {
-                checkAuth();
-            } else {
-                alert("Error: " + data.message);
-                btnLogin.textContent = "Sign in with Google";
+                if (data.status === 'manual_auth_required') {
+                    // Open URL
+                    const authUrl = data.auth_url;
+                    window.open(authUrl, '_blank');
+
+                    // Update UI
+                    btnLogin.innerHTML = '<i class="fas fa-check"></i> Đã mở tab';
+                    linkManual.href = authUrl;
+
+                    // Show Input Box
+                    authWarning.style.display = 'none';
+                    codeInputBox.style.display = 'block';
+                    authCodeInput.focus();
+
+                } else if (data.status === 'already_logged_in') {
+                    checkAuth();
+                } else {
+                    alert("Lỗi: " + data.message);
+                    btnLogin.innerHTML = '<i class="fab fa-google"></i> Đăng nhập';
+                    btnLogin.disabled = false;
+                }
+            } catch (err) {
+                alert("Lỗi kết nối server: " + err);
+                btnLogin.disabled = false;
             }
         });
 
+        // 2. Submit Code
         btnSubmitCode.addEventListener('click', async () => {
             const code = authCodeInput.value.trim();
-            if (!code) return alert("Please enter the code!");
+            if (!code) {
+                alert("Vui lòng dán mã code từ Google vào!");
+                return;
+            }
 
-            btnSubmitCode.textContent = "Verifying...";
+            btnSubmitCode.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
             btnSubmitCode.disabled = true;
 
-            const res = await fetch('/api/submit_code', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ code: code })
-            });
-            const data = await res.json();
+            try {
+                const res = await fetch('/api/submit_code', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code: code })
+                });
+                const data = await res.json();
 
-            if (data.status === 'success') {
-                alert("Login Successful!");
-                codeInputBox.style.display = 'none';
-                checkAuth();
-            } else {
-                alert("Failed: " + data.message);
-                btnSubmitCode.textContent = "Verify";
+                if (data.status === 'success') {
+                    // Success
+                    codeInputBox.style.display = 'none';
+                    checkAuth(); // Will update UI status
+                } else {
+                    alert("Xác thực thất bại: " + data.message);
+                    btnSubmitCode.innerHTML = 'XÁC NHẬN';
+                    btnSubmitCode.disabled = false;
+                }
+            } catch (error) {
+                alert("Lỗi gửi code: " + error);
                 btnSubmitCode.disabled = false;
             }
         });
 
+        // Form Submit Logic
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
             const formData = new FormData(form);
 
             startBtn.disabled = true;
-            startBtn.textContent = "ĐANG XỬ LÝ...";
+            startBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ĐANG XỬ LÝ...';
             progressContainer.style.display = 'block';
+            logText.textContent = "Đang khởi tạo...";
+            progressFill.style.width = "0%";
 
             const params = new URLSearchParams(formData);
-            const response = await fetch('/api/start_copy?' + params.toString(), { method: 'POST' });
-            const result = await response.json();
 
-            if (result.status === 'started') {
-                const eventSource = new EventSource('/api/stream_logs');
-                eventSource.onmessage = function (event) {
-                    const data = JSON.parse(event.data);
-                    if (data.done) {
+            try {
+                const response = await fetch('/api/start_copy?' + params.toString(), { method: 'POST' });
+                const result = await response.json();
+
+                if (result.status === 'started') {
+                    const eventSource = new EventSource('/api/stream_logs');
+
+                    eventSource.onmessage = function (event) {
+                        const data = JSON.parse(event.data);
+                        if (data.done) {
+                            eventSource.close();
+                            startBtn.disabled = false;
+                            startBtn.innerHTML = 'KÍCH HOẠT SAO CHÉP';
+                            logText.textContent = data.message || "Hoàn tất!";
+                            progressFill.style.width = "100%";
+                            return;
+                        }
+                        logText.textContent = data.message;
+                        if (data.progress) {
+                            progressFill.style.width = (data.progress * 100) + '%';
+                        }
+                    };
+
+                    eventSource.onerror = function () {
                         eventSource.close();
                         startBtn.disabled = false;
-                        startBtn.textContent = "SAO CHÉP XONG";
-                        logText.textContent = "Hoàn tất 100%.";
-                        progressFill.style.width = "100%";
-                        return;
+                        startBtn.innerHTML = 'THỬ LẠI';
                     }
-                    logText.textContent = data.message;
-                    if (data.progress) {
-                        progressFill.style.width = (data.progress * 100) + '%';
-                    }
-                };
+                } else {
+                    logText.textContent = "Lỗi: " + result.message;
+                    startBtn.disabled = false;
+                    startBtn.innerHTML = 'KÍCH HOẠT SAO CHÉP';
+                }
+            } catch (err) {
+                logText.textContent = "Lỗi mạng: " + err;
+                startBtn.disabled = false;
+                startBtn.innerHTML = 'KÍCH HOẠT SAO CHÉP';
             }
         });
     </script>
