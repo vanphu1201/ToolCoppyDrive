@@ -27,7 +27,10 @@ class DriveCopyWorker:
 
     def _get_service(self):
         """Authenticates using Service Account or User Credentials."""
-        SCOPES = ['https://www.googleapis.com/auth/drive']
+        SCOPES = [
+            'https://www.googleapis.com/auth/drive',
+            'https://www.googleapis.com/auth/userinfo.email'
+        ]
         creds = None
         
         try:
@@ -78,7 +81,10 @@ class DriveCopyWorker:
     def get_auth_url(self, redirect_uri=None):
         """Generates Auth URL for Web Flow."""
         from google_auth_oauthlib.flow import InstalledAppFlow
-        SCOPES = ['https://www.googleapis.com/auth/drive']
+        SCOPES = [
+            'https://www.googleapis.com/auth/drive',
+            'https://www.googleapis.com/auth/userinfo.email'
+        ]
         
         # If no redirect_uri, default to OOB (which is now blocked for new apps, but kept for legacy)
         r_uri = redirect_uri if redirect_uri else 'urn:ietf:wg:oauth:2.0:oob'
