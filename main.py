@@ -63,10 +63,16 @@ async def read_root(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 @app.get("/api/check_auth")
-def check_auth():
-    """Check if token.json exists (local or tmp)."""
-    exists = os.path.exists('token.json') or os.path.exists('/tmp/token.json')
-    return {"authenticated": exists}
+def check_auth(request: Request):
+    """Check if session is valid in DB (Persistent)."""
+    session_id = request.cookies.get("session_id")
+    if not session_id:
+        # Fallback to file check (legacy/local)
+        exists = os.path.exists('token.json') or os.path.exists('/tmp/token.json')
+        return {"authenticated": exists}
+    
+    token_json = db.get_session(session_id)
+    return {"authenticated": token_json is not None}
 
 # Startup: Handle Vercel Environment Variables
 AUTH_FILE_PATH = 'client_secret.json'
@@ -120,33 +126,44 @@ async def login_google(request: Request):
         return {"status": "error", "message": str(e)}
 
 @app.get("/api/callback")
-async def auth_callback(code: str):
+async def auth_callback(code: str, request: Request):
     """Handles the OAuth Callback from Google."""
     global auth_worker
     try:
+        # Reconstruct base_url and Redirect URI
+        base_url = str(request.base_url).rstrip("/")
+        if "vercel.app" in base_url and "http://" in base_url:
+            base_url = base_url.replace("http://", "https://")
+        
+        REDIRECT_URI = f"{base_url}/api/callback"
+        
         if not auth_worker:
-            # Re-init if lost (stateless)
              auth_worker = DriveCopyWorker(AUTH_FILE_PATH, auth_mode='user')
-             
-             # Re-inject flow with SAME Redirect URI to exchange code
-             # We need to reconstruct the callback URL from the current request to match
-             base_url = str(request.base_url).rstrip("/")
-             # Note: request.base_url in FastAPI/Starlette might be http even if behind https proxy on Vercel unless trusted hosts are set.
-             # However, for exchange_code, the redirect_uri string just needs to match what was sent.
-             # Ideally check 'x-forwarded-proto' if needed, but for now try request.base_url
-             
-             # Force HTTPS if we are on Vercel (heuristic)
-             if "vercel.app" in base_url and "http://" in base_url:
-                 base_url = base_url.replace("http://", "https://")
-
-             REDIRECT_URI = f"{base_url}/api/callback"
              auth_worker.get_auth_url(redirect_uri=REDIRECT_URI)
-             
+
         creds = auth_worker.exchange_code(code)
         
         if creds:
-            # Redirect back to Home
-            return HTMLResponse("<script>window.location.href='/';</script>")
+            # SUCCESS: Convert creds to JSON
+            token_json = creds.to_json()
+            
+            # Generate Session ID
+            session_id = str(uuid.uuid4())
+            
+            # Save to Database (Persistent!)
+            db.save_session(session_id, token_json)
+            print(f"✅ Saved session {session_id} to database")
+            
+            # Set Cookie and Redirect
+            response = HTMLResponse("<script>window.location.href='/';</script>")
+            response.set_cookie(
+                key="session_id", 
+                value=session_id,
+                max_age=30*24*60*60, # 30 days
+                httponly=True,
+                samesite='lax'
+            )
+            return response
         else:
             return HTMLResponse("<h1>Lỗi xác thực!</h1><p>Không thể trao đổi mã token.</p>")
             
@@ -163,16 +180,32 @@ async def start_copy(request: Request):
         return JSONResponse({"status": "error", "message": "Tiến trình khác đang chạy!"})
     
     try:
-        # Check Auth first
-        token_path = 'token.json' 
-        if os.path.exists("/tmp/token.json"): 
-            token_path = "/tmp/token.json"
+    try:
+        # 1. Try to get token from Session (DB)
+        session_id = request.cookies.get("session_id")
+        token_path = None
         
+        if session_id:
+            token_json = db.get_session(session_id)
+            if token_json:
+                # Write to temp file for worker to use
+                token_path = f"/tmp/token_{session_id}.json"
+                with open(token_path, "w") as f:
+                    f.write(token_json)
+                print(f"✅ Loaded token from DB for session {session_id}")
+        
+        # 2. Fallback to global file (Legacy/Local)
+        if not token_path:
+            if os.path.exists("/tmp/token.json"):
+                token_path = "/tmp/token.json"
+            elif os.path.exists("token.json"):
+                token_path = "token.json"
+
         # Verify user is logged in
-        if not os.path.exists(token_path):
+        if not token_path or not os.path.exists(token_path):
             return JSONResponse({
                 "status": "error", 
-                "message": "Bạn chưa đăng nhập Google Drive. Vui lòng đăng nhập trước!"
+                "message": "Bạn chưa đăng nhập Google Drive. Vui lòng đăng nhập lại!"
             })
         
         # Get user email from Google token (this is the unique identifier)
@@ -288,9 +321,17 @@ async def start_copy(request: Request):
 async def check_payment_status(request: Request):
     """Check if user has paid using Google email."""
     try:
-        # Get email from token
-        token_path = 'token.json'
-        if os.path.exists("/tmp/token.json"):
+        # Get token from Session or File
+        session_id = request.cookies.get("session_id")
+        token_path = 'token.json' # Default
+        
+        if session_id:
+            token_json = db.get_session(session_id)
+            if token_json:
+                token_path = f"/tmp/token_{session_id}.json"
+                with open(token_path, "w") as f:
+                    f.write(token_json)
+        elif os.path.exists("/tmp/token.json"):
             token_path = "/tmp/token.json"
         
         if not os.path.exists(token_path):
@@ -323,9 +364,17 @@ async def check_payment_status(request: Request):
 async def mark_paid(request: Request):
     """Endpoint to manually mark user as paid after payment verification."""
     try:
-        # Get email from token
-        token_path = 'token.json'
-        if os.path.exists("/tmp/token.json"):
+        # Get token from Session or File
+        session_id = request.cookies.get("session_id")
+        token_path = 'token.json' # Default
+        
+        if session_id:
+            token_json = db.get_session(session_id)
+            if token_json:
+                token_path = f"/tmp/token_{session_id}.json"
+                with open(token_path, "w") as f:
+                    f.write(token_json)
+        elif os.path.exists("/tmp/token.json"):
             token_path = "/tmp/token.json"
         
         if not os.path.exists(token_path):

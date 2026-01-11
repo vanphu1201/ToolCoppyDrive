@@ -206,6 +206,97 @@ class UsageDatabase:
         cursor.close()
         conn.close()
         print(f"✅ Marked {client_id} as paid")
+
+    # --- Session Management for Vercel Persistence ---
+    
+    def init_session_table(self):
+        """Create auth_sessions table."""
+        if not self.database_url:
+            # SQLite
+            import sqlite3
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS auth_sessions (
+                    session_id VARCHAR(255) PRIMARY KEY,
+                    token_data TEXT,
+                    created_at TEXT,
+                    expires_at TEXT
+                )
+            ''')
+            conn.commit()
+            conn.close()
+            return
+
+        # PostgreSQL
+        conn = psycopg2.connect(self.database_url)
+        cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS auth_sessions (
+                session_id VARCHAR(255) PRIMARY KEY,
+                token_data TEXT,
+                created_at TIMESTAMP,
+                expires_at TIMESTAMP
+            )
+        ''')
+        conn.commit()
+        cursor.close()
+        conn.close()
+        print("✅ Auth sessions table initialized")
+
+    def save_session(self, session_id, token_json):
+        """Save session token to database."""
+        now = datetime.now()
+        
+        if not self.database_url:
+            # SQLite
+            import sqlite3
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT OR REPLACE INTO auth_sessions (session_id, token_data, created_at)
+                VALUES (?, ?, ?)
+            ''', (session_id, token_json, now.isoformat()))
+            conn.commit()
+            conn.close()
+            return
+
+        # PostgreSQL
+        conn = psycopg2.connect(self.database_url)
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO auth_sessions (session_id, token_data, created_at)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (session_id) 
+            DO UPDATE SET token_data = EXCLUDED.token_data, created_at = EXCLUDED.created_at
+        ''', (session_id, token_json, now))
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+    def get_session(self, session_id):
+        """Retrieve token data by session_id."""
+        if not session_id:
+            return None
+            
+        if not self.database_url:
+            # SQLite
+            import sqlite3
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute('SELECT token_data FROM auth_sessions WHERE session_id = ?', (session_id,))
+            row = cursor.fetchone()
+            conn.close()
+            return row[0] if row else None
+
+        # PostgreSQL
+        conn = psycopg2.connect(self.database_url)
+        cursor = conn.cursor()
+        cursor.execute('SELECT token_data FROM auth_sessions WHERE session_id = %s', (session_id,))
+        row = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        return row[0] if row else None
     
     def get_or_create_user(self, client_id):
         """Get user or create if doesn't exist."""
