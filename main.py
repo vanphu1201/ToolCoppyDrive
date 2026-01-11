@@ -293,13 +293,33 @@ async def check_payment_status(request: Request):
 
 @app.post("/api/mark-paid")
 async def mark_paid(request: Request):
-    """Debug endpoint to manually mark user as paid."""
-    client_id = request.cookies.get('client_id')
-    if not client_id:
-        return {"status": "error", "message": "No client ID"}
-    
-    db.mark_as_paid(client_id)
-    return {"status": "success", "message": "User marked as paid"}
+    """Endpoint to manually mark user as paid after payment verification."""
+    try:
+        # Get email from token
+        token_path = 'token.json'
+        if os.path.exists("/tmp/token.json"):
+            token_path = "/tmp/token.json"
+        
+        if not os.path.exists(token_path):
+            return {"status": "error", "message": "Not logged in"}
+        
+        from google.oauth2.credentials import Credentials
+        from googleapiclient.discovery import build
+        
+        creds = Credentials.from_authorized_user_file(token_path)
+        oauth_service = build('oauth2', 'v2', credentials=creds)
+        user_info = oauth_service.userinfo().get().execute()
+        user_email = user_info.get('email')
+        
+        if not user_email:
+            return {"status": "error", "message": "Cannot get email"}
+        
+        db.mark_as_paid(user_email)
+        print(f"✅ Manually marked {user_email} as paid")
+        return {"status": "success", "message": "User marked as paid"}
+    except Exception as e:
+        print(f"❌ Mark paid error: {e}")
+        return {"status": "error", "message": str(e)}
 
 @app.post("/api/sepay-webhook")
 async def sepay_webhook(request: Request, authorization: str = Header(None)):

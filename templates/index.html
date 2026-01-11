@@ -175,17 +175,22 @@
                 </div>
             </div>
 
-            <div id="payment-success" class="payment-success">
-                <i class="fas fa-check-circle"></i> Đã xác nhận thanh toán!
+            <div class="payment-success" id="payment-success">
+                <i class="fas fa-check-circle"></i>
+                <p>Đã xác nhận thanh toán!</p>
             </div>
 
             <div class="modal-actions">
-                <button id="close-modal-btn" class="btn-close">Đóng</button>
-                <a href="https://zalo.me/0348880746" target="_blank" class="btn-support">
-                    <i class="fas fa-phone-alt"></i> Hỗ trợ qua Zalo
-                </a>
+                <button type="button" id="verify-payment-btn" class="verify-btn">
+                    <i class="fas fa-check"></i> Tôi đã chuyển khoản
+                </button>
+                <button type="button" id="close-modal-btn" class="close-btn">Đóng</button>
             </div>
+            <a href="https://zalo.me/0348880746" target="_blank" class="btn-support">
+                <i class="fas fa-phone-alt"></i> Hỗ trợ qua Zalo
+            </a>
         </div>
+    </div>
     </div>
 
     <script src="/static/app.js"></script>

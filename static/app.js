@@ -176,6 +176,36 @@ function checkPaymentStatus() {
         .catch(err => console.error('Payment check error:', err));
 }
 
+
+const verifyPaymentBtn = document.getElementById('verify-payment-btn');
+
+verifyPaymentBtn.addEventListener('click', async () => {
+    verifyPaymentBtn.disabled = true;
+    verifyPaymentBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang xác nhận...';
+
+    try {
+        const response = await fetch('/api/mark-paid', { method: 'POST' });
+        const data = await response.json();
+
+        if (data.status === 'success') {
+            paymentSuccess.style.display = 'block';
+            clearInterval(paymentCheckInterval);
+            setTimeout(() => {
+                paymentModal.style.display = 'none';
+                location.reload();
+            }, 2000);
+        } else {
+            alert('Lỗi: ' + data.message);
+            verifyPaymentBtn.disabled = false;
+            verifyPaymentBtn.innerHTML = '<i class="fas fa-check"></i> Tôi đã chuyển khoản';
+        }
+    } catch (err) {
+        alert('Lỗi kết nối: ' + err);
+        verifyPaymentBtn.disabled = false;
+        verifyPaymentBtn.innerHTML = '<i class="fas fa-check"></i> Tôi đã chuyển khoản';
+    }
+});
+
 closeModalBtn.addEventListener('click', () => {
     paymentModal.style.display = 'none';
     if (paymentCheckInterval) {
