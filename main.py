@@ -180,7 +180,6 @@ async def start_copy(request: Request):
         return JSONResponse({"status": "error", "message": "Tiến trình khác đang chạy!"})
     
     try:
-    try:
         # 1. Try to get token from Session (DB)
         session_id = request.cookies.get("session_id")
         token_path = None
