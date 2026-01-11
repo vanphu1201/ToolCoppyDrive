@@ -189,8 +189,13 @@ async def start_copy(request: Request):
         user = db.get_or_create_user(client_id)
         print(f"📊 Current usage for {client_id}: {user['usage_count']} / 2, Paid: {user['is_paid']}")
         
-        # Payment gate: if usage >= 2 and not paid, require payment
-        if user['usage_count'] >= 2 and not user['is_paid']:
+        # Payment gate logic:
+        # - If paid: unlimited access
+        # - If not paid and usage_count >= 2: require payment
+        # - If not paid and usage_count < 2: allow copy (will increment after)
+        
+        if not user['is_paid'] and user['usage_count'] >= 2:
+            # User has used 2 free copies and hasn't paid yet
             # Generate payment QR code
             payment_code = f"DH{hashlib.md5(client_id.encode()).hexdigest()[:8].upper()}"
             amount = 50000
@@ -202,6 +207,8 @@ async def start_copy(request: Request):
             
             qr_url = f"https://qr.sepay.vn/img?bank={bank_name}&acc={account_number}&amount={amount}&des={payment_code}"
             
+            print(f"💳 Payment required for {client_id}. Payment code: {payment_code}")
+            
             return JSONResponse({
                 "status": "payment_required",
                 "message": "Bạn đã sử dụng hết 2 lần miễn phí. Vui lòng thanh toán để tiếp tục.",
@@ -211,6 +218,10 @@ async def start_copy(request: Request):
                 "account_name": account_name
             })
     
+        # User is either:
+        # 1. Paid user (unlimited access)
+        # 2. Free user with usage_count < 2
+        
         # Params
         dest = request.query_params.get("dest_url")
         src = request.query_params.get("source_url")
@@ -233,8 +244,12 @@ async def start_copy(request: Request):
                 worker = DriveCopyWorker(AUTH_FILE_PATH, auth_mode='user', status_callback=status_callback)
                 worker.run_copy(src, dest, limit, excluded_list, from_p, to_p)
                 
-                # Increment usage count after successful copy
-                db.increment_usage(client_id)
+                # Only increment usage for non-paid users
+                if not user['is_paid']:
+                    db.increment_usage(client_id)
+                    print(f"✅ Incremented usage for {client_id}. New count: {user['usage_count'] + 1}")
+                else:
+                    print(f"✅ Paid user {client_id} - no usage increment")
                 
                 msg_queue.put({"message": "✅ Đã hoàn tất sao chép!", "progress": 1.0, "done": True})
             except Exception as e:
