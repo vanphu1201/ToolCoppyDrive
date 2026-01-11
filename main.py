@@ -186,48 +186,72 @@ async def start_copy(request: Request):
         
         return response
     
-    # Check Auth
-    token_path = 'token.json' 
-    if os.path.exists("/tmp/token.json"): token_path = "/tmp/token.json"
-    
-    # Params
-    dest = request.query_params.get("dest_url")
-    src = request.query_params.get("source_url")
-    limit = int(request.query_params.get("limit_size", 500))
-    exclude = request.query_params.get("exclude_str", "")
-    from_p = int(request.query_params.get("from_page", 0))
-    to_p = int(request.query_params.get("to_page", 0))
-    
-    excluded_list = [x.strip() for x in exclude.split(",") if x.strip()]
-    
-    # Worker Thread
-    def run_worker():
-        global is_running
-        try:
-            is_running = True
-            if not os.path.exists(AUTH_FILE_PATH):
-                 msg_queue.put({"message": "Thiếu file client_secret", "error": True, "done": True})
-                 return
+    try:
+        # Check Auth
+        token_path = 'token.json' 
+        if os.path.exists("/tmp/token.json"): 
+            token_path = "/tmp/token.json"
+        
+        # Verify user is logged in
+        if not os.path.exists(token_path):
+            response = JSONResponse({
+                "status": "error", 
+                "message": "Bạn chưa đăng nhập Google Drive. Vui lòng đăng nhập trước!"
+            })
+            if not request.cookies.get('client_id'):
+                response.set_cookie(key='client_id', value=client_id, max_age=365*24*60*60)
+            return response
+        
+        # Params
+        dest = request.query_params.get("dest_url")
+        src = request.query_params.get("source_url")
+        limit = int(request.query_params.get("limit_size", 500))
+        exclude = request.query_params.get("exclude_str", "")
+        from_p = int(request.query_params.get("from_page", 0))
+        to_p = int(request.query_params.get("to_page", 0))
+        
+        excluded_list = [x.strip() for x in exclude.split(",") if x.strip()]
+        
+        # Worker Thread
+        def run_worker():
+            global is_running
+            try:
+                is_running = True
+                if not os.path.exists(AUTH_FILE_PATH):
+                     msg_queue.put({"message": "Thiếu file client_secret", "error": True, "done": True})
+                     return
 
-            worker = DriveCopyWorker(AUTH_FILE_PATH, auth_mode='user', status_callback=status_callback)
-            worker.run_copy(src, dest, limit, excluded_list, from_p, to_p)
-            
-            # Increment usage count after successful copy
-            db.increment_usage(client_id)
-            
-            msg_queue.put({"message": "✅ Đã hoàn tất sao chép!", "progress": 1.0, "done": True})
-        except Exception as e:
-            msg_queue.put({"message": f"Lỗi nghiêm trọng: {str(e)}", "error": True, "done": True})
-        finally:
-            is_running = False
-            
-    threading.Thread(target=run_worker, daemon=True).start()
+                worker = DriveCopyWorker(AUTH_FILE_PATH, auth_mode='user', status_callback=status_callback)
+                worker.run_copy(src, dest, limit, excluded_list, from_p, to_p)
+                
+                # Increment usage count after successful copy
+                db.increment_usage(client_id)
+                
+                msg_queue.put({"message": "✅ Đã hoàn tất sao chép!", "progress": 1.0, "done": True})
+            except Exception as e:
+                msg_queue.put({"message": f"Lỗi nghiêm trọng: {str(e)}", "error": True, "done": True})
+            finally:
+                is_running = False
+                
+        threading.Thread(target=run_worker, daemon=True).start()
+        
+        # Return response with cookie
+        response = JSONResponse({"status": "started"})
+        if not request.cookies.get('client_id'):
+            response.set_cookie(key='client_id', value=client_id, max_age=365*24*60*60)
+        return response
     
-    # Return response with cookie
-    response = JSONResponse({"status": "started"})
-    if not request.cookies.get('client_id'):
-        response.set_cookie(key='client_id', value=client_id, max_age=365*24*60*60)
-    return response
+    except Exception as e:
+        print(f"❌ Error in start_copy: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        response = JSONResponse({
+            "status": "error",
+            "message": f"Lỗi hệ thống: {str(e)}"
+        })
+        if not request.cookies.get('client_id'):
+            response.set_cookie(key='client_id', value=client_id, max_age=365*24*60*60)
+        return response
 
 @app.get("/api/payment-status")
 async def check_payment_status(request: Request):
