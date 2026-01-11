@@ -253,15 +253,16 @@ async def start_copy(request: Request):
                      msg_queue.put({"message": "Thiếu file client_secret", "error": True, "done": True})
                      return
 
-                worker = DriveCopyWorker(AUTH_FILE_PATH, auth_mode='user', status_callback=status_callback)
-                worker.run_copy(src, dest, limit, excluded_list, from_p, to_p)
-                
-                # Only increment usage for non-paid users
+                # Increment usage BEFORE copy starts to prevent bypass on error
                 if not user['is_paid']:
                     db.increment_usage(client_id)
-                    print(f"✅ Incremented usage for {client_id}. New count: {user['usage_count'] + 1}")
+                    print(f"✅ Incremented usage for {client_id} (Attempt started). New count: {user['usage_count'] + 1}")
                 else:
                     print(f"✅ Paid user {client_id} - no usage increment")
+                
+                # Start Copy
+                worker = DriveCopyWorker(AUTH_FILE_PATH, auth_mode='user', status_callback=status_callback)
+                worker.run_copy(src, dest, limit, excluded_list, from_p, to_p)
                 
                 msg_queue.put({"message": "✅ Đã hoàn tất sao chép!", "progress": 1.0, "done": True})
             except Exception as e:
