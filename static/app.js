@@ -160,6 +160,41 @@ function showPaymentModal(data) {
     paymentCheckInterval = setInterval(checkPaymentStatus, 3000);
 }
 
+const checkPaymentBtn = document.getElementById('check-payment-btn');
+if (checkPaymentBtn) {
+    checkPaymentBtn.addEventListener('click', checkPaymentManual);
+}
+
+async function checkPaymentManual() {
+    if (checkPaymentBtn.disabled) return;
+
+    checkPaymentBtn.disabled = true;
+    const originalText = checkPaymentBtn.innerHTML;
+    checkPaymentBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang kỹ tra...';
+
+    try {
+        const res = await fetch('/api/force-check-payment', { method: 'POST' });
+        const data = await res.json();
+
+        if (data.status === 'success') {
+            paymentSuccess.style.display = 'block';
+            paymentSuccess.querySelector('p').textContent = "Đã xác nhận thanh toán thành công!";
+            clearInterval(paymentCheckInterval);
+            setTimeout(() => {
+                paymentModal.style.display = 'none';
+                location.reload();
+            }, 1000);
+        } else {
+            alert(data.message || "Chưa tìm thấy thanh toán. Vui lòng thử lại sau 30s.");
+        }
+    } catch (err) {
+        alert("Lỗi kết nối: " + err);
+    } finally {
+        checkPaymentBtn.disabled = false;
+        checkPaymentBtn.innerHTML = originalText;
+    }
+}
+
 function checkPaymentStatus() {
     fetch('/api/payment-status')
         .then(r => r.json())

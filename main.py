@@ -15,6 +15,7 @@ import secrets
 from drive_utils import DriveCopyWorker
 from database import UsageDatabase
 from dotenv import load_dotenv
+import requests
 
 app = FastAPI()
 
@@ -47,6 +48,10 @@ else:
     print(f"\n============================================================")
     print(f"✅ USING CONFIGURED SEPAY WEBHOOK API KEY (from ENV)")
     print(f"============================================================\n")
+
+# SePay API Token for Manual Checks
+SEPAY_API_TOKEN = os.environ.get("SEPAY_API_TOKEN")
+
 
 def status_callback(message, progress=None, is_error=False):
     """Callback bridge for DriveCopyWorker to put messages into Queue."""
@@ -520,13 +525,108 @@ async def sepay_webhook(request: Request, authorization: str = Header(None)):
                 print(f"✅ Payment confirmed for: {client_id}")
                 return {"status": "success", "message": "Payment confirmed", "client_id": client_id}
         
-        print(f"❌ No matching user found for hash: {payment_hash}")
         return {"status": "ignored", "message": "No matching payment found"}
         
     except Exception as e:
         print(f"❌ Webhook error: {str(e)}")
         import traceback
         traceback.print_exc()
+        return {"status": "error", "message": str(e)}
+
+def check_sepay_payment(payment_code_hash):
+    """
+    Manually check SePay API for a transaction with specific content.
+    Returns: True if found (and valid), False otherwise.
+    """
+    if not SEPAY_API_TOKEN:
+        print("❌ Missing SEPAY_API_TOKEN. Cannot check manually.")
+        return False
+
+    try:
+        url = "https://my.sepay.vn/userapi/transactions/list"
+        headers = {
+            "Authorization": f"Bearer {SEPAY_API_TOKEN}",
+            "Content-Type": "application/json"
+        }
+        # Iterate pages if needed, but for now check recent 50
+        params = {"limit": 50} 
+        
+        response = requests.get(url, headers=headers, params=params)
+        data = response.json()
+        
+        if not data.get("status") == 200:
+             print(f"❌ SePay API Error: {data.get('message')}")
+             return False
+
+        transactions = data.get("transactions", [])
+        print(f"🔍 Checking {len(transactions)} recent transactions for code hash: {payment_code_hash}")
+        
+        for trans in transactions:
+            content = trans.get("transaction_content", "")
+            amount = float(trans.get("amount_in", 0))
+            
+            # Check content for "DH{hash}"
+            import re
+            match = re.search(r'DH([A-F0-9]{8})', content.upper())
+            if match:
+                found_hash = match.group(1).lower()
+                if found_hash == payment_code_hash.lower() and amount >= 50000:
+                    print(f"✅ Found matching transaction in API! Content: {content}")
+                    return True
+                    
+        return False
+
+    except Exception as e:
+        print(f"❌ Error checking SePay API: {e}")
+        return False
+
+@app.post("/api/force-check-payment")
+async def force_check_payment(request: Request):
+    """Endpoint triggered by user 'Check Payment' button."""
+    try:
+        # Get Token/User
+        session_id = request.cookies.get("session_id")
+        token_path = 'token.json'
+        if session_id:
+            token_json = db.get_session(session_id)
+            if token_json:
+                token_path = f"/tmp/token_{session_id}.json"
+                with open(token_path, "w") as f: f.write(token_json)
+        
+        if not os.path.exists(token_path):
+             return {"status": "error", "message": "Not logged in"}
+
+        from google.oauth2.credentials import Credentials
+        from googleapiclient.discovery import build
+        
+        creds = Credentials.from_authorized_user_file(token_path)
+        oauth_service = build('oauth2', 'v2', credentials=creds)
+        user_info = oauth_service.userinfo().get().execute()
+        user_email = user_info.get('email')
+        
+        if not user_email: return {"status": "error", "message": "No email"}
+        
+        user = db.get_user(user_email)
+        if user and user['is_paid']:
+            return {"status": "success", "message": "Already paid!", "paid": True}
+
+        # Calculate expected hash
+        payment_code_hash = hashlib.md5(user_email.encode()).hexdigest()[:8].lower()
+        
+        # Check API
+        is_paid = check_sepay_payment(payment_code_hash)
+        
+        if is_paid:
+            db.mark_as_paid(user_email)
+            return {"status": "success", "message": "Payment verified!", "paid": True}
+        else:
+            return {
+                "status": "not_found", 
+                "message": "Payment not found yet. Please wait a few minutes or check your transfer content.",
+                "paid": False
+            }
+
+    except Exception as e:
         return {"status": "error", "message": str(e)}
 
 @app.get("/api/stream_logs")
