@@ -1,17 +1,15 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="vi">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Drive Copy Pro</title>
+    <title>Drive Copy Pro - Công cụ sao chép Google Drive</title>
     <link rel="stylesheet" href="/static/style.css">
-    <!-- Font Awesome for Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 
 <body>
-
     <!-- Top Navigation -->
     <nav class="navbar">
         <div class="brand">
@@ -21,14 +19,14 @@
                 <span>Premium Edition</span>
             </div>
         </div>
-        <button class="vip-btn">
-            <i class="fas fa-crown"></i> VIP ACCESS
-        </button>
+        <div class="nav-right">
+            <div class="status-pill" id="auth-status">● Đang kiểm tra...</div>
+        </div>
     </nav>
 
     <div class="container">
+        <!-- Main Card -->
         <div class="card">
-
             <div class="form-header">
                 <div class="header-left">
                     <div class="header-icon"><i class="fab fa-google-drive"></i></div>
@@ -37,56 +35,35 @@
                         <p>Sao chép thư mục từ Drive được chia sẻ sang Drive của bạn</p>
                     </div>
                 </div>
-                <!-- Auth Status Pill -->
-                <div class="status-pill" id="auth-status">● Đang kiểm tra...</div>
             </div>
 
-            <!-- Login / Auth Section -->
+            <!-- Auth Section -->
             <div id="auth-section" style="margin-bottom: 25px; display: none;">
-                <!-- 1. Not Authenticated Warning -->
-                <div id="auth-warning"
-                    style="display: flex; justify-content: space-between; align-items: center; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); padding: 12px 20px; border-radius: 8px;">
-                    <div style="color: #EF4444; font-weight: 500; display: flex; align-items: center; gap: 8px;">
-                        <i class="fas fa-exclamation-triangle"></i> Chưa kết nối Google Drive
+                <div id="auth-warning" class="warning-box">
+                    <div class="warning-content">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <span>Chưa kết nối Google Drive</span>
                     </div>
-                    <button id="btn-login"
-                        style="background: #EF4444; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s;">
+                    <button id="btn-login" class="btn-login">
                         <i class="fab fa-google"></i> Đăng nhập
                     </button>
                 </div>
-
-                <!-- 2. Manual Code Input (Hidden by default) -->
-                <div id="code-input-box"
-                    style="display: none; margin-top: 15px; background: #1C2333; padding: 20px; border-radius: 8px; border: 1px solid #FFB02E;">
-                    <div style="color: #FFB02E; font-size: 14px; margin-bottom: 12px;">
-                        <strong><i class="fas fa-key"></i> Xác thực thủ công:</strong><br>
-                        <span style="color: #94A3B8; font-size: 13px;">1. Cửa sổ đăng nhập đã mở (hoặc <a href="#"
-                                id="link-manual" target="_blank" style="color: #60A5FA;">bấm vào đây</a>).<br>2. Copy mã
-                            từ Google và dán vào bên dưới:</span>
-                    </div>
-                    <div style="display: flex; gap: 10px;">
-                        <input type="text" id="auth-code-input" placeholder="Dán mã vào đây (4/0A...)"
-                            style="flex: 1; background: #0B0E14; border: 1px solid #2E3648; padding: 10px; color: white; border-radius: 4px;">
-                        <button id="btn-submit-code"
-                            style="background: #FFB02E; color: #000; border: none; padding: 0 20px; border-radius: 6px; font-weight: 700; cursor: pointer;">
-                            XÁC NHẬN
-                        </button>
-                    </div>
-                </div>
             </div>
 
+            <!-- Main Form -->
             <form id="copy-form">
-
                 <div class="form-group">
                     <div class="label"><i class="fas fa-hdd"></i> Your Drive (Drive đích)</div>
                     <input type="text" name="dest_url" placeholder="Nhập đường link folder Google Drive của bạn"
                         required>
+                    <small class="hint">Folder này sẽ chứa dữ liệu được sao chép</small>
                 </div>
 
                 <div class="form-group">
                     <div class="label"><i class="fas fa-share-alt"></i> Shared Drive (Drive nguồn)</div>
                     <input type="text" name="source_url" placeholder="Nhập đường link folder Google Drive shared"
                         required>
+                    <small class="hint">Link phải được chia sẻ công khai (Anyone with the link)</small>
                 </div>
 
                 <div class="row">
@@ -111,10 +88,11 @@
                 </div>
 
                 <button type="submit" class="submit-btn" id="start-btn">
-                    KÍCH HOẠT SAO CHÉP
+                    <i class="fas fa-rocket"></i> KÍCH HOẠT SAO CHÉP
                 </button>
             </form>
 
+            <!-- Progress -->
             <div id="progress-container">
                 <div class="progress-bg">
                     <div class="progress-fill" id="progress-fill"></div>
@@ -124,234 +102,93 @@
 
             <!-- Instructions -->
             <div class="info-box">
-                <div class="info-title"><i class="far fa-lightbulb"></i> Hướng dẫn</div>
+                <div class="info-title"><i class="far fa-lightbulb"></i> Hướng dẫn sử dụng</div>
                 <ul class="info-list">
-                    <li>Đặt 0 ở cả "Từ trang" và "Đến trang" để sao chép tất cả các tệp</li>
-                    <li>Để loại trừ nhiều từ khóa, phân tách bằng dấu phẩy</li>
-                    <li>Dung lượng tối đa là giới hạn cho tổng kích thước tệp (GB)</li>
+                    <li><strong>Bước 1:</strong> Đăng nhập Google Drive (nút phía trên)</li>
+                    <li><strong>Bước 2:</strong> Nhập link folder đích (Drive của bạn)</li>
+                    <li><strong>Bước 3:</strong> Nhập link folder nguồn (Drive cần copy)</li>
+                    <li><strong>Bước 4:</strong> Nhấn "Kích hoạt sao chép" và đợi</li>
+                    <li><strong>Lưu ý:</strong> Đặt 0 ở "Từ trang" và "Đến trang" để copy tất cả</li>
                 </ul>
             </div>
+
+            <!-- Important Notice -->
+            <div class="notice-box">
+                <div class="notice-title"><i class="fas fa-info-circle"></i> Lưu ý quan trọng</div>
+                <ul class="notice-list">
+                    <li><i class="fas fa-check-circle"></i> Bạn được sử dụng <strong>MIỄN PHÍ 2 lần</strong></li>
+                    <li><i class="fas fa-credit-card"></i> Từ lần thứ 3 trở đi: Thanh toán <strong>50,000 VNĐ</strong>
+                        để tiếp tục</li>
+                    <li><i class="fas fa-shield-alt"></i> Công cụ sử dụng quyền truy cập <strong>của chính bạn</strong>
+                    </li>
+                    <li><i class="fas fa-lock"></i> Dữ liệu của bạn <strong>hoàn toàn an toàn</strong></li>
+                    <li><i class="fas fa-clock"></i> Thời gian copy phụ thuộc vào dung lượng</li>
+                </ul>
+            </div>
+
+            <!-- Contact -->
+            <div class="contact-box">
+                <div class="contact-title"><i class="fas fa-headset"></i> Hỗ trợ & Liên hệ</div>
+                <div class="contact-content">
+                    <p>Gặp vấn đề hoặc cần hỗ trợ? Liên hệ Admin:</p>
+                    <a href="https://zalo.me/0348880746" target="_blank" class="zalo-btn">
+                        <i class="fas fa-phone-alt"></i> Chat qua Zalo: 0348880746
+                    </a>
+                    <p class="contact-note">
+                        <i class="fas fa-clock"></i> Thời gian hỗ trợ: 8:00 - 22:00 hàng ngày
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <p>© 2026 Drive Copy Pro - Premium Edition</p>
+            <p>Developed with <i class="fas fa-heart"></i> by Admin</p>
         </div>
     </div>
 
     <!-- Payment Modal -->
-    <div id="payment-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 9999; justify-content: center; align-items: center;">
-        <div style="background: #1e293b; border-radius: 16px; padding: 40px; max-width: 500px; border: 1px solid #F59E0B; text-align: center;">
-            <div style="font-size: 2rem; margin-bottom: 10px;">💳</div>
-            <h2 style="color: #F59E0B; margin-bottom: 10px;">Thanh toán để tiếp tục</h2>
-            <p style="color: #94a3b8; margin-bottom: 20px;" id="payment-message">Bạn đã sử dụng hết 2 lần miễn phí.</p>
-            
-            <div style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px;">
-                <img id="qr-code-img" src="" alt="QR Code" style="max-width: 100%; height: auto;">
+    <div id="payment-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><i class="fas fa-credit-card"></i> Thanh toán để tiếp tục</h2>
+                <p id="payment-message">Bạn đã sử dụng hết 2 lần miễn phí.</p>
             </div>
-            
-            <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid #F59E0B; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
-                <div style="color: #F59E0B; font-weight: 600; margin-bottom: 5px;">Số tiền: <span id="payment-amount">50,000</span> VNĐ</div>
-                <div style="color: #94a3b8; font-size: 0.9rem;">Nội dung: <span id="payment-code" style="color: #fff; font-weight: 600;">-</span></div>
+
+            <div class="qr-container">
+                <img id="qr-code-img" src="" alt="QR Code">
             </div>
-            
-            <div style="color: #10B981; font-weight: 600; margin-bottom: 15px; display: none;" id="payment-success">
+
+            <div class="payment-info">
+                <div class="payment-row">
+                    <span>Số tiền:</span>
+                    <strong id="payment-amount">50,000</strong> VNĐ
+                </div>
+                <div class="payment-row">
+                    <span>Nội dung:</span>
+                    <code id="payment-code">-</code>
+                </div>
+                <div class="payment-row">
+                    <span>Ngân hàng:</span>
+                    <strong>MBBank - 0348880746</strong>
+                </div>
+            </div>
+
+            <div id="payment-success" class="payment-success">
                 <i class="fas fa-check-circle"></i> Đã xác nhận thanh toán!
             </div>
-            
-            <button id="close-modal-btn" style="background: #334155; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600;">
-                Đóng
-            </button>
+
+            <div class="modal-actions">
+                <button id="close-modal-btn" class="btn-close">Đóng</button>
+                <a href="https://zalo.me/0348880746" target="_blank" class="btn-support">
+                    <i class="fas fa-phone-alt"></i> Hỗ trợ qua Zalo
+                </a>
+            </div>
         </div>
     </div>
 
-    <script>
-        // DOM Elements
-        const authSection = document.getElementById('auth-section');
-        const authWarning = document.getElementById('auth-warning');
-        const btnLogin = document.getElementById('btn-login');
-        const codeInputBox = document.getElementById('code-input-box');
-        const authCodeInput = document.getElementById('auth-code-input');
-        const btnSubmitCode = document.getElementById('btn-submit-code');
-        const linkManual = document.getElementById('link-manual');
-
-        const startBtn = document.getElementById('start-btn');
-        const authStatus = document.getElementById('auth-status');
-        const form = document.getElementById('copy-form');
-        const progressContainer = document.getElementById('progress-container');
-        const progressFill = document.getElementById('progress-fill');
-        const logText = document.getElementById('log-text');
-
-        // Check Auth Status
-        function checkAuth() {
-            fetch('/api/check_auth')
-                .then(r => r.json())
-                .then(data => {
-                    if (data.authenticated) {
-                        // Logged In
-                        authStatus.innerHTML = '<i class="fas fa-check-circle"></i> Sẵn sàng';
-                        authStatus.style.color = "#10B981";
-                        authStatus.style.background = "rgba(16, 185, 129, 0.1)";
-                        authStatus.style.borderColor = "rgba(16, 185, 129, 0.2)";
-
-                        authSection.style.display = 'none'; // Hide auth UI
-                        startBtn.disabled = false;
-                        startBtn.style.opacity = '1';
-                        startBtn.style.cursor = 'pointer';
-                    } else {
-                        // Not Logged In
-                        authStatus.innerHTML = '<i class="fas fa-times-circle"></i> Chưa kết nối';
-                        authStatus.style.color = "#EF4444";
-                        authStatus.style.background = "rgba(239, 68, 68, 0.1)";
-                        authStatus.style.borderColor = "rgba(239, 68, 68, 0.2)";
-
-                        authSection.style.display = 'block';
-                        authWarning.style.display = 'flex';
-                        // IMPORTANT: Do NOT disable the login button
-                        // codeInputBox remains hidden until clicked
-
-                        startBtn.disabled = true;
-                        startBtn.style.opacity = '0.5';
-                        startBtn.style.cursor = 'not-allowed';
-                    }
-                })
-                .catch(err => console.error("Auth Check Error:", err));
-        }
-
-        // Polling
-        setInterval(checkAuth, 3000);
-        checkAuth();
-
-        // 1. Click Login -> Get URL -> Open & Show Input
-        if (btnLogin) {
-            btnLogin.addEventListener('click', async (e) => {
-                e.preventDefault();
-                btnLogin.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang chuyển hướng...';
-                btnLogin.disabled = true;
-
-                try {
-                    const res = await fetch('/api/login', { method: 'POST' });
-                    const data = await res.json();
-
-                    if (data.status === 'redirect_required' || data.status === 'manual_auth_required') {
-                        // Redirect user to Google Auth
-                        window.location.href = data.auth_url;
-                    } else if (data.status === 'already_logged_in') {
-                        checkAuth();
-                    } else {
-                        alert("Lỗi: " + data.message);
-                        btnLogin.innerHTML = '<i class="fab fa-google"></i> Đăng nhập';
-                        btnLogin.disabled = false;
-                    }
-                } catch (err) {
-                    alert("Lỗi kết nối server: " + err);
-                    btnLogin.innerHTML = '<i class="fab fa-google"></i> Đăng nhập';
-                    btnLogin.disabled = false;
-                }
-            });
-        }
-
-        // Form Submit Logic
-        if (form) {
-            form.addEventListener('submit', async (e) => {
-                e.preventDefault();
-                const formData = new FormData(form);
-
-                startBtn.disabled = true;
-                startBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ĐANG XỬ LÝ...';
-                progressContainer.style.display = 'block';
-                logText.textContent = "Đang khởi tạo...";
-                progressFill.style.width = "0%";
-
-                const params = new URLSearchParams(formData);
-
-                try {
-                    const response = await fetch('/api/start_copy?' + params.toString(), { method: 'POST' });
-                    const result = await response.json();
-
-                    if (result.status === 'started') {
-                        const eventSource = new EventSource('/api/stream_logs');
-
-                        eventSource.onmessage = function (event) {
-                            const data = JSON.parse(event.data);
-                            if (data.done) {
-                                eventSource.close();
-                                startBtn.disabled = false;
-                                startBtn.innerHTML = 'KÍCH HOẠT SAO CHÉP';
-                                logText.textContent = data.message || "Hoàn tất!";
-                                progressFill.style.width = "100%";
-                                return;
-                            }
-                            logText.textContent = data.message;
-                            if (data.progress) {
-                                progressFill.style.width = (data.progress * 100) + '%';
-                            }
-                        };
-
-                        eventSource.onerror = function () {
-                            eventSource.close();
-                            startBtn.disabled = false;
-                            startBtn.innerHTML = 'THỬ LẠI';
-                        }
-                    } else if (result.status === 'payment_required') {
-                        // Show payment modal
-                        showPaymentModal(result);
-                        startBtn.disabled = false;
-                        startBtn.innerHTML = 'KÍCH HOẠT SAO CHÉP';
-                    } else {
-                        logText.textContent = "Lỗi: " + result.message;
-                        startBtn.disabled = false;
-                        startBtn.innerHTML = 'KÍCH HOẠT SAO CHÉP';
-                    }
-                } catch (err) {
-                    logText.textContent = "Lỗi mạng: " + err;
-                    startBtn.disabled = false;
-                    startBtn.innerHTML = 'KÍCH HOẠT SAO CHÉP';
-                }
-            });
-        }
-
-        // Payment Modal Logic
-        const paymentModal = document.getElementById('payment-modal');
-        const qrCodeImg = document.getElementById('qr-code-img');
-        const paymentMessage = document.getElementById('payment-message');
-        const paymentAmount = document.getElementById('payment-amount');
-        const paymentCode = document.getElementById('payment-code');
-        const paymentSuccess = document.getElementById('payment-success');
-        const closeModalBtn = document.getElementById('close-modal-btn');
-        
-        let paymentCheckInterval = null;
-
-        function showPaymentModal(data) {
-            paymentMessage.textContent = data.message;
-            qrCodeImg.src = data.qr_url;
-            paymentAmount.textContent = data.amount.toLocaleString();
-            paymentCode.textContent = data.payment_code;
-            paymentModal.style.display = 'flex';
-            paymentSuccess.style.display = 'none';
-            
-            // Start polling for payment status
-            paymentCheckInterval = setInterval(checkPaymentStatus, 3000);
-        }
-
-        function checkPaymentStatus() {
-            fetch('/api/payment-status')
-                .then(r => r.json())
-                .then(data => {
-                    if (data.paid) {
-                        paymentSuccess.style.display = 'block';
-                        clearInterval(paymentCheckInterval);
-                        setTimeout(() => {
-                            paymentModal.style.display = 'none';
-                            location.reload();
-                        }, 2000);
-                    }
-                })
-                .catch(err => console.error('Payment check error:', err));
-        }
-
-        closeModalBtn.addEventListener('click', () => {
-            paymentModal.style.display = 'none';
-            if (paymentCheckInterval) {
-                clearInterval(paymentCheckInterval);
-            }
-        });
-    </script>
+    <script src="/static/app.js"></script>
 </body>
 
 </html>
