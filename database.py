@@ -15,15 +15,16 @@ class UsageDatabase:
     
     def __init__(self):
         # Get database URL from environment variable
-        self.database_url = os.environ.get('DATABASE_URL')
+        # Vercel Neon uses POSTGRES_URL, custom setups use DATABASE_URL
+        self.database_url = os.environ.get('POSTGRES_URL') or os.environ.get('DATABASE_URL')
         
         if not self.database_url:
-            # Fallback to SQLite for local development without Supabase
-            print("⚠️  DATABASE_URL not found, using SQLite fallback")
+            # Fallback to SQLite for local development without Postgres
+            print("⚠️  No POSTGRES_URL or DATABASE_URL found, using SQLite fallback")
             self._use_sqlite_fallback()
             return
         
-        print(f"✅ Using PostgreSQL database (Supabase)")
+        print(f"✅ Using PostgreSQL database (Neon/Vercel)")
         try:
             self._init_db()
         except Exception as e:
