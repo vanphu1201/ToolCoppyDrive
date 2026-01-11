@@ -14,6 +14,7 @@ import hashlib
 import secrets
 from drive_utils import DriveCopyWorker
 from database import UsageDatabase
+from dotenv import load_dotenv
 
 app = FastAPI()
 
