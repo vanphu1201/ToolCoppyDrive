@@ -28,13 +28,24 @@ is_running = False
 # Database
 db = UsageDatabase()
 
-# Webhook API Key - Tạo key ngẫu nhiên hoặc dùng key cố định
-# Bạn sẽ điền key này vào form SePay
-WEBHOOK_API_KEY = os.environ.get('SEPAY_WEBHOOK_KEY', 'SEPAY_' + secrets.token_urlsafe(32))
-print(f"\n{'='*60}")
-print(f"🔑 SEPAY WEBHOOK API KEY: {WEBHOOK_API_KEY}")
-print(f"📋 Copy key này và điền vào form SePay (trường API Key)")
-print(f"{'='*60}\n")
+# Load environment variables
+load_dotenv()
+
+# SePay Webhook configuration
+# KMA uses environment variable if available, otherwise generates a random one
+SEPAY_WEBHOOK_KEY = os.environ.get("SEPAY_WEBHOOK_KEY")
+if not SEPAY_WEBHOOK_KEY:
+    # Generate a random key if not set in env (fallback)
+    import secrets
+    SEPAY_WEBHOOK_KEY = f"SEPAY_{secrets.token_urlsafe(32)}"
+    print(f"\n============================================================")
+    print(f"🔑 GENERATED SEPAY WEBHOOK API KEY: {SEPAY_WEBHOOK_KEY}")
+    print(f"⚠️  WARNING: Store this key in Vercel Environment Variables!")
+    print(f"============================================================\n")
+else:
+    print(f"\n============================================================")
+    print(f"✅ USING CONFIGURED SEPAY WEBHOOK API KEY (from ENV)")
+    print(f"============================================================\n")
 
 def status_callback(message, progress=None, is_error=False):
     """Callback bridge for DriveCopyWorker to put messages into Queue."""
