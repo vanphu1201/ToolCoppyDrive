@@ -205,7 +205,9 @@ async def start_copy(request: Request):
                 "amount": amount,
                 "payment_code": payment_code,
                 "account_name": account_name
-            })\n    \n        # Params
+            })
+    
+        # Params
         dest = request.query_params.get("dest_url")
         src = request.query_params.get("source_url")
         limit = int(request.query_params.get("limit_size", 500))
