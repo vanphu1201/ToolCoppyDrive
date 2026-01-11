@@ -258,21 +258,38 @@ async def start_copy(request: Request):
 
 @app.get("/api/payment-status")
 async def check_payment_status(request: Request):
-    """Check if user has paid. For now, this is a simulated check."""
-    client_id = request.cookies.get('client_id')
-    if not client_id:
-        return {"paid": False, "message": "No client ID found"}
-    
-    user = db.get_user(client_id)
-    if not user:
-        return {"paid": False, "message": "User not found"}
-    
-    # TODO: Integrate with SePay API to check actual payment
-    # For now, return the database status
-    return {
-        "paid": user['is_paid'],
-        "usage_count": user['usage_count']
-    }
+    """Check if user has paid using Google email."""
+    try:
+        # Get email from token
+        token_path = 'token.json'
+        if os.path.exists("/tmp/token.json"):
+            token_path = "/tmp/token.json"
+        
+        if not os.path.exists(token_path):
+            return {"paid": False, "message": "Not logged in"}
+        
+        from google.oauth2.credentials import Credentials
+        from googleapiclient.discovery import build
+        
+        creds = Credentials.from_authorized_user_file(token_path)
+        oauth_service = build('oauth2', 'v2', credentials=creds)
+        user_info = oauth_service.userinfo().get().execute()
+        user_email = user_info.get('email')
+        
+        if not user_email:
+            return {"paid": False, "message": "Cannot get email"}
+        
+        user = db.get_user(user_email)
+        if not user:
+            return {"paid": False, "message": "User not found"}
+        
+        return {
+            "paid": user['is_paid'],
+            "usage_count": user['usage_count']
+        }
+    except Exception as e:
+        print(f"❌ Payment status check error: {e}")
+        return {"paid": False, "message": str(e)}
 
 @app.post("/api/mark-paid")
 async def mark_paid(request: Request):
@@ -288,60 +305,77 @@ async def mark_paid(request: Request):
 async def sepay_webhook(request: Request, authorization: str = Header(None)):
     """Webhook endpoint to receive payment notifications from SePay."""
     try:
-        # Verify API Key
+        # Verify API key
         if not authorization:
-            print("❌ Webhook rejected: Missing Authorization header")
-            return JSONResponse(
-                status_code=401,
-                content={"status": "error", "message": "Missing API Key"}
-            )
+            print("❌ Webhook: Missing authorization")
+            return {"status": "error", "message": "Unauthorized"}
         
-        # Extract API key from header (format: "apikey YOUR_KEY" or just "YOUR_KEY")
-        api_key = authorization.replace('apikey ', '').strip()
+        # Extract API key (format: "apikey YOUR_KEY" or "Bearer YOUR_KEY" or just "YOUR_KEY")
+        api_key = authorization.replace('apikey ', '').replace('Bearer ', '').strip()
         
         if api_key != WEBHOOK_API_KEY:
-            print(f"❌ Webhook rejected: Invalid API Key: {api_key}")
-            return JSONResponse(
-                status_code=403,
-                content={"status": "error", "message": "Invalid API Key"}
-            )
+            print(f"❌ Webhook: Invalid API key")
+            return {"status": "error", "message": "Unauthorized"}
         
-        # Get webhook data
+        # Parse webhook data
         data = await request.json()
+        print(f"📥 Webhook received: {json.dumps(data, indent=2)}")
         
-        # Log for debugging
-        print("✅ SePay Webhook received:", json.dumps(data, indent=2))
-        
-        # Extract payment info from SePay webhook
-        # SePay webhook format: {"content": "DH12345678", "amount": 50000, ...}
+        # Extract payment info
         transfer_content = data.get('transferContent', '') or data.get('content', '')
         transfer_amount = int(data.get('transferAmount', 0) or data.get('amount', 0))
         
-        # Extract payment code (format: DH{client_id_prefix})
-        if transfer_content.startswith('DH') and len(transfer_content) >= 10:
-            payment_code = transfer_content[:10]  # DH + 8 chars
-            client_id_prefix = payment_code[2:].lower()
-            
-            # Find user by client_id prefix and amount
-            if transfer_amount >= 50000:
-                # Search for matching client_id in database
-                # Note: This is a simplified search - in production, store payment_code in DB
-                conn = sqlite3.connect(db.db_path)
-                cursor = conn.cursor()
-                cursor.execute('SELECT client_id FROM user_usage WHERE client_id LIKE ? AND is_paid = 0', (f'{client_id_prefix}%',))
-                result = cursor.fetchone()
-                conn.close()
-                
-                if result:
-                    client_id = result[0]
-                    db.mark_as_paid(client_id)
-                    print(f"✅ Payment confirmed for client: {client_id}")
-                    return {"status": "success", "message": "Payment confirmed"}
+        print(f"💰 Amount: {transfer_amount}, Content: {transfer_content}")
         
+        # Extract payment code (format: DH{hash})
+        import re
+        match = re.search(r'DH([A-F0-9]{8})', transfer_content.upper())
+        if not match:
+            print(f"❌ Invalid payment code format")
+            return {"status": "error", "message": "Invalid payment code"}
+        
+        payment_hash = match.group(1).lower()
+        print(f"🔑 Payment hash: {payment_hash}")
+        
+        # Verify amount
+        if transfer_amount < 50000:
+            print(f"❌ Insufficient amount: {transfer_amount}")
+            return {"status": "error", "message": "Insufficient amount"}
+        
+        # Find user by matching email hash
+        # Search all users and match hash
+        if hasattr(db, 'database_url') and db.database_url:
+            # PostgreSQL
+            import psycopg2
+            conn = psycopg2.connect(db.database_url)
+            cursor = conn.cursor()
+            cursor.execute('SELECT client_id FROM user_usage WHERE is_paid = FALSE')
+            users = cursor.fetchall()
+            conn.close()
+        else:
+            # SQLite
+            import sqlite3
+            conn = sqlite3.connect(db.db_path)
+            cursor = conn.cursor()
+            cursor.execute('SELECT client_id FROM user_usage WHERE is_paid = 0')
+            users = cursor.fetchall()
+            conn.close()
+        
+        # Find matching user
+        for (client_id,) in users:
+            user_hash = hashlib.md5(client_id.encode()).hexdigest()[:8].lower()
+            if user_hash == payment_hash:
+                db.mark_as_paid(client_id)
+                print(f"✅ Payment confirmed for: {client_id}")
+                return {"status": "success", "message": "Payment confirmed", "client_id": client_id}
+        
+        print(f"❌ No matching user found for hash: {payment_hash}")
         return {"status": "ignored", "message": "No matching payment found"}
         
     except Exception as e:
-        print(f"Webhook error: {str(e)}")
+        print(f"❌ Webhook error: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return {"status": "error", "message": str(e)}
 
 @app.get("/api/stream_logs")
