@@ -144,17 +144,16 @@ async def auth_callback(code: str):
 
 
 @app.post("/api/start_copy")
-async def start_copy(request: Request, response: Response):
+async def start_copy(request: Request):
     global is_running
     
     if is_running:
-        return {"status": "error", "message": "Tiến trình khác đang chạy!"}
+        return JSONResponse({"status": "error", "message": "Tiến trình khác đang chạy!"})
     
     # Get or create client_id from cookie
     client_id = request.cookies.get('client_id')
     if not client_id:
         client_id = str(uuid.uuid4())
-        response.set_cookie(key='client_id', value=client_id, max_age=365*24*60*60)  # 1 year
     
     # Check usage
     user = db.get_or_create_user(client_id)
@@ -172,14 +171,20 @@ async def start_copy(request: Request, response: Response):
         
         qr_url = f"https://qr.sepay.vn/img?bank={bank_name}&acc={account_number}&amount={amount}&des={payment_code}"
         
-        return {
+        response = JSONResponse({
             "status": "payment_required",
             "message": "Bạn đã sử dụng hết 2 lần miễn phí. Vui lòng thanh toán để tiếp tục.",
             "qr_url": qr_url,
             "amount": amount,
             "payment_code": payment_code,
             "account_name": account_name
-        }
+        })
+        
+        # Set cookie if new user
+        if not request.cookies.get('client_id'):
+            response.set_cookie(key='client_id', value=client_id, max_age=365*24*60*60)
+        
+        return response
     
     # Check Auth
     token_path = 'token.json' 
@@ -218,7 +223,11 @@ async def start_copy(request: Request, response: Response):
             
     threading.Thread(target=run_worker, daemon=True).start()
     
-    return {"status": "started"}
+    # Return response with cookie
+    response = JSONResponse({"status": "started"})
+    if not request.cookies.get('client_id'):
+        response.set_cookie(key='client_id', value=client_id, max_age=365*24*60*60)
+    return response
 
 @app.get("/api/payment-status")
 async def check_payment_status(request: Request):
