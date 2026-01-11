@@ -321,6 +321,61 @@ async def mark_paid(request: Request):
         print(f"❌ Mark paid error: {e}")
         return {"status": "error", "message": str(e)}
 
+@app.get("/api/debug/database")
+async def debug_database(request: Request):
+    """Debug endpoint to view database contents."""
+    try:
+        # Get all users from database
+        if hasattr(db, 'database_url') and db.database_url:
+            # PostgreSQL
+            import psycopg2
+            conn = psycopg2.connect(db.database_url)
+            cursor = conn.cursor()
+            cursor.execute('SELECT client_id, usage_count, is_paid, created_at, updated_at FROM user_usage ORDER BY created_at DESC LIMIT 20')
+            users = cursor.fetchall()
+            conn.close()
+            
+            return {
+                "database_type": "PostgreSQL (Neon)",
+                "total_users": len(users),
+                "users": [
+                    {
+                        "email": row[0],
+                        "usage_count": row[1],
+                        "is_paid": row[2],
+                        "created_at": str(row[3]),
+                        "updated_at": str(row[4])
+                    }
+                    for row in users
+                ]
+            }
+        else:
+            # SQLite
+            import sqlite3
+            conn = sqlite3.connect(db.db_path)
+            cursor = conn.cursor()
+            cursor.execute('SELECT client_id, usage_count, is_paid, created_at, updated_at FROM user_usage ORDER BY created_at DESC LIMIT 20')
+            users = cursor.fetchall()
+            conn.close()
+            
+            return {
+                "database_type": "SQLite",
+                "database_path": db.db_path,
+                "total_users": len(users),
+                "users": [
+                    {
+                        "email": row[0],
+                        "usage_count": row[1],
+                        "is_paid": bool(row[2]),
+                        "created_at": row[3],
+                        "updated_at": row[4]
+                    }
+                    for row in users
+                ]
+            }
+    except Exception as e:
+        return {"error": str(e)}
+
 @app.post("/api/sepay-webhook")
 async def sepay_webhook(request: Request, authorization: str = Header(None)):
     """Webhook endpoint to receive payment notifications from SePay."""
