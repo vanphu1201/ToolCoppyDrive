@@ -205,25 +205,7 @@ async def start_copy(request: Request):
                 "amount": amount,
                 "payment_code": payment_code,
                 "account_name": account_name
-            })
-    
-    try:
-        # Check Auth
-        token_path = 'token.json' 
-        if os.path.exists("/tmp/token.json"): 
-            token_path = "/tmp/token.json"
-        
-        # Verify user is logged in
-        if not os.path.exists(token_path):
-            response = JSONResponse({
-                "status": "error", 
-                "message": "Bạn chưa đăng nhập Google Drive. Vui lòng đăng nhập trước!"
-            })
-            if not request.cookies.get('client_id'):
-                response.set_cookie(key='client_id', value=client_id, max_age=365*24*60*60)
-            return response
-        
-        # Params
+            })\n    \n        # Params
         dest = request.query_params.get("dest_url")
         src = request.query_params.get("source_url")
         limit = int(request.query_params.get("limit_size", 500))
