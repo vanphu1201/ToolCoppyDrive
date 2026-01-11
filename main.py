@@ -309,7 +309,6 @@ async def start_copy(request: Request):
                 
         threading.Thread(target=run_worker, daemon=True).start()
         
-        # Return response
         return JSONResponse({"status": "started"})
     
     except Exception as e:
@@ -320,6 +319,162 @@ async def start_copy(request: Request):
             "status": "error",
             "message": f"Lỗi hệ thống: {str(e)}"
         })
+
+@app.post("/api/scan")
+async def scan_folder(request: Request):
+    """
+    Phase 1: Scans the source folder and returns a flat list of files.
+    """
+    try:
+        # 1. Auth & Payment Check
+        session_id = request.cookies.get("session_id")
+        token_path = None
+        if session_id:
+            token_json = db.get_session(session_id)
+            if token_json:
+                token_path = f"/tmp/token_{session_id}.json"
+                with open(token_path, "w") as f: f.write(token_json)
+        
+        if not token_path or not os.path.exists(token_path):
+             # Fallback
+             if os.path.exists('token.json'): token_path = 'token.json'
+             else: return JSONResponse({"status": "error", "message": "Chưa đăng nhập!"})
+
+        # Get User Email for Payment Check
+        from google.oauth2.credentials import Credentials
+        from googleapiclient.discovery import build
+        creds = Credentials.from_authorized_user_file(token_path)
+        service = build('oauth2', 'v2', credentials=creds)
+        user_info = service.userinfo().get().execute()
+        user_email = user_info.get('email')
+        
+        # Check Payment
+        user = db.get_or_create_user(user_email)
+        if not user['is_paid'] and user['usage_count'] >= 2:
+             # Payment Logic
+             amount = 50000
+             payment_code = f"DH{hashlib.md5(user_email.encode()).hexdigest()[:8].upper()}"
+             qr_url = f"https://qr.sepay.vn/img?bank=MBBank&acc=0348880746&amount={amount}&des={payment_code}"
+             return JSONResponse({
+                "status": "payment_required",
+                "message": "Hết lượt miễn phí. Vui lòng thanh toán.",
+                "qr_url": qr_url,
+                "amount": amount,
+                "payment_code": payment_code
+             })
+
+        # 2. Prepare Worker
+        data = await request.json()
+        src = data.get("source_url")
+        exclude = data.get("exclude_str", "")
+        excluded_list = [x.strip() for x in exclude.split(",") if x.strip()]
+        
+        worker = DriveCopyWorker(AUTH_FILE_PATH, auth_mode='user')
+        # Manually load creds to worker (hacky but works since we have file)
+        # Actually worker init does it if token.json exists.
+        # We need to make sure worker uses OUR token_path
+        # DriveCopyWorker logic prefers 'token.json' or '/tmp/token.json'.
+        # We might need to copy our specific token there.
+        import shutil
+        shutil.copy(token_path, '/tmp/token.json')
+        
+        # 3. Scan
+        src_id = worker.extract_folder_id(src)
+        if not src_id: return JSONResponse({"status": "error", "message": "Link Drive không hợp lệ"})
+        
+        # Check access & Get Root Name
+        try:
+            worker._get_service() # Init service
+            file_meta = worker.service.files().get(fileId=src_id, supportsAllDrives=True).execute()
+            root_name = file_meta.get('name', 'Copied_Folder')
+        except Exception as e:
+            return JSONResponse({"status": "error", "message": f"Không thể truy cập folder nguồn: {e}"})
+
+        items = worker.scan_structure(src_id)
+        
+        # Increment usage if not paid (Optimistic: mark used once they start scanning/copying)
+        # Or we can increment in copy-batch? Better here to prevent spamming scan.
+        if not user['is_paid']:
+            db.increment_usage(user_email)
+
+        return JSONResponse({
+            "status": "success",
+            "root_name": root_name,
+            "items": items,
+            "total_size": sum(i['size'] for i in items if i['type'] == 'file')
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JSONResponse({"status": "error", "message": str(e)})
+
+@app.post("/api/copy-batch")
+async def copy_batch(request: Request):
+    """
+    Phase 2: Copies a batch of files.
+    """
+    try:
+        # 1. Auth (Simplified - assume valid from Scan phase, but still check existence)
+        # For Vercel, we need to re-verify or trust session.
+        session_id = request.cookies.get("session_id")
+        token_path = "/tmp/token.json" 
+        # Ideally we re-validate session every time but for speed we rely on token file presence or re-extract
+        if session_id:
+             token_json = db.get_session(session_id)
+             if token_json:
+                 with open(token_path, "w") as f: f.write(token_json)
+        
+        if not os.path.exists(token_path):
+            return JSONResponse({"status": "error", "message": "Auth missed"})
+            
+        # 2. Parse Body
+        data = await request.json()
+        items = data.get("items", [])
+        dest_url = data.get("dest_url")
+        root_folder_name = data.get("root_folder_name", "Copied_Folder")
+        
+        if not items or not dest_url:
+            return JSONResponse({"status": "error", "message": "Missing info"})
+            
+        worker = DriveCopyWorker(AUTH_FILE_PATH, auth_mode='user')
+        worker._get_service()
+        
+        dest_parent_id = worker.extract_folder_id(dest_url)
+        
+        # Ensure Root Folder Exists (Idempotent)
+        # We assume the First batch might create it, or we check every time.
+        # Better: check check_exists
+        root_dest_id = worker.create_folder(dest_parent_id, root_folder_name)
+        if not root_dest_id:
+             return JSONResponse({"status": "error", "message": "Cannot create root folder"})
+             
+        # 3. Process Batch
+        results = []
+        for item in items:
+            if item['type'] == 'folder':
+                # Just ensure it exists
+                # worker.ensure_path_exists(root_dest_id, item['path'] + [item['name']])
+                # Actually, scan_structure returns folders too. 
+                # If we process folders here, we just create them.
+                # But 'copy_file_with_path' handles path creation.
+                # So we can Ignore folder items if we use 'copy_file_with_path' for files.
+                # BUT empty folders won't be created if we ignore them.
+                # Let's verify:
+                full_path = item['path'] + [item['name']]
+                worker.ensure_path_exists(root_dest_id, full_path)
+                results.append({"id": item['id'], "status": "created"})
+            else:
+                # File
+                res = worker.copy_file_with_path(item, root_dest_id)
+                results.append({"id": item['id'], "status": res['status']})
+                
+        return JSONResponse({"status": "success", "results": results})
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JSONResponse({"status": "error", "message": str(e)})
 
 @app.get("/api/payment-status")
 async def check_payment_status(request: Request):

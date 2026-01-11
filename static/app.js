@@ -81,70 +81,103 @@ if (btnLogin) {
 }
 
 // Form Submit Logic
+// Form Submit Logic
 if (form) {
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
         const formData = new FormData(form);
+        const destUrl = formData.get('dest_url');
 
         startBtn.disabled = true;
         startBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ĐANG XỬ LÝ...';
         progressContainer.style.display = 'block';
-        logText.textContent = "Đang khởi tạo...";
+        logText.textContent = "Đang kết nối & quét dữ liệu nguồn...";
         progressFill.style.width = "0%";
 
-        const params = new URLSearchParams(formData);
+        // Params just for Scan
+        const scanBody = {
+            source_url: formData.get('source_url'),
+            exclude_str: formData.get('exclude_str')
+        };
 
         try {
-            const response = await fetch('/api/start_copy?' + params.toString(), { method: 'POST' });
-            const result = await response.json();
+            // PHASE 1: SCAN
+            const scanResponse = await fetch('/api/scan', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(scanBody)
+            });
+            const scanResult = await scanResponse.json();
 
-            if (result.status === 'started') {
-                const eventSource = new EventSource('/api/stream_logs');
+            if (scanResult.status === 'payment_required') {
+                showPaymentModal(scanResult);
+                resetUI();
+                return;
+            } else if (scanResult.status === 'error') {
+                logText.textContent = "Lỗi: " + scanResult.message;
+                resetUI();
+                return;
+            } else if (scanResult.status === 'success') {
+                const items = scanResult.items;
+                const rootName = scanResult.root_name;
+                const totalItems = items.length;
+                let processedCount = 0;
 
-                eventSource.onmessage = function (event) {
-                    const data = JSON.parse(event.data);
-                    if (data.done) {
-                        eventSource.close();
-                        startBtn.disabled = false;
-                        startBtn.innerHTML = '<i class="fas fa-rocket"></i> KÍCH HOẠT SAO CHÉP';
-                        logText.textContent = data.message || "Hoàn tất!";
-                        progressFill.style.width = "100%";
-                        return;
+                logText.textContent = `Đã tìm thấy ${totalItems} mục. Bắt đầu sao chép...`;
+                progressFill.style.width = "5%";
+
+                // PHASE 2: BATCH COPY
+                const BATCH_SIZE = 5; // Safe for Vercel (10s limit)
+
+                for (let i = 0; i < totalItems; i += BATCH_SIZE) {
+                    const chunk = items.slice(i, i + BATCH_SIZE);
+
+                    try {
+                        const batchRes = await fetch('/api/copy-batch', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                items: chunk,
+                                dest_url: destUrl,
+                                root_folder_name: rootName
+                            })
+                        });
+                        const batchData = await batchRes.json();
+
+                        if (batchData.status !== 'success') {
+                            console.error("Batch Error:", batchData);
+                            logText.textContent = `Lỗi sao chép batch ${Math.ceil(i / BATCH_SIZE) + 1}: ${batchData.message}`;
+                            // Optional: Break or Continue? Continue best effort.
+                        } else {
+                            processedCount += chunk.length;
+                            const percent = Math.min(Math.round((processedCount / totalItems) * 100), 99);
+                            progressFill.style.width = percent + "%";
+                            logText.textContent = `Đang sao chép... ${processedCount}/${totalItems}`;
+                        }
+
+                    } catch (batchErr) {
+                        console.error("Network Error Batch:", batchErr);
+                        logText.textContent = "Lỗi mạng khi copy, đang thử tiếp...";
                     }
-                    logText.textContent = data.message;
-                    if (data.progress) {
-                        progressFill.style.width = (data.progress * 100) + '%';
-                    }
-                };
-
-                eventSource.onerror = function () {
-                    eventSource.close();
-                    startBtn.disabled = false;
-                    startBtn.innerHTML = '<i class="fas fa-redo"></i> THỬ LẠI';
                 }
-            } else if (result.status === 'payment_required') {
-                // Show payment modal
-                showPaymentModal(result);
-                startBtn.disabled = false;
-                startBtn.innerHTML = '<i class="fas fa-rocket"></i> KÍCH HOẠT SAO CHÉP';
-                progressContainer.style.display = 'none';
-            } else if (result.status === 'error') {
-                logText.textContent = "Lỗi: " + result.message;
-                startBtn.disabled = false;
-                startBtn.innerHTML = '<i class="fas fa-rocket"></i> KÍCH HOẠT SAO CHÉP';
-                progressContainer.style.display = 'none';
-            } else {
-                logText.textContent = "Lỗi: " + result.message;
+
+                // DONE
+                progressFill.style.width = "100%";
+                logText.textContent = "✅ Hoàn tất quá trình sao chép!";
                 startBtn.disabled = false;
                 startBtn.innerHTML = '<i class="fas fa-rocket"></i> KÍCH HOẠT SAO CHÉP';
             }
+
         } catch (err) {
-            logText.textContent = "Lỗi mạng: " + err;
-            startBtn.disabled = false;
-            startBtn.innerHTML = '<i class="fas fa-rocket"></i> KÍCH HOẠT SAO CHÉP';
-            progressContainer.style.display = 'none';
+            logText.textContent = "Lỗi kết nối: " + err;
+            resetUI();
         }
     });
+}
+
+function resetUI() {
+    startBtn.disabled = false;
+    startBtn.innerHTML = '<i class="fas fa-rocket"></i> KÍCH HOẠT SAO CHÉP';
 }
 
 // Payment Modal Functions

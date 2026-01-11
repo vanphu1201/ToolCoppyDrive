@@ -386,3 +386,99 @@ class DriveCopyWorker:
         if not self.stop_signal:
             self._log("✅ Hoàn tất quá trình sao chép!", progress=1.0)
 
+    def scan_structure(self, folder_id, current_path=[]):
+        """
+        Recursively returns a flat list of all files/folders.
+        Item format: {'id': '...', 'name': '...', 'type': 'file'|'folder', 'path': ['FolderA', 'FolderB'], 'size': 0}
+        """
+        items_flat = []
+        token = None
+        query = f"'{folder_id}' in parents and trashed = false"
+        
+        # Excludes
+        if self.excluded_strings:
+             excludes = " and ".join([f"not name contains '{s}'" for s in self.excluded_strings])
+             query += f" and ({excludes})"
+
+        while True:
+            try:
+                results = self.service.files().list(
+                    q=query,
+                    fields='nextPageToken, files(id, name, mimeType, size)',
+                    pageToken=token,
+                    supportsAllDrives=True,
+                    includeItemsFromAllDrives=True,
+                    pageSize=1000
+                ).execute()
+                
+                files = results.get('files', [])
+                for f in files:
+                    item_type = 'folder' if f['mimeType'] == 'application/vnd.google-apps.folder' else 'file'
+                    item = {
+                        'id': f['id'],
+                        'name': f['name'],
+                        'type': item_type,
+                        'path': current_path, # List of folder names from root
+                        'size': int(f.get('size', 0))
+                    }
+                    items_flat.append(item)
+                    
+                    if item_type == 'folder':
+                        # Recurse
+                        new_path = current_path + [f['name']]
+                        items_flat.extend(self.scan_structure(f['id'], new_path))
+                
+                token = results.get('nextPageToken')
+                if not token: break
+            except Exception as e:
+                self._log(f"Lỗi scan: {e}")
+                break
+        return items_flat
+
+    def ensure_path_exists(self, dest_root_id, path_names):
+        """
+        Navigates or creates a path of folders starting from dest_root_id.
+        path_names: ['FolderA', 'FolderB']
+        Returns the ID of the last folder.
+        """
+        current_parent_id = dest_root_id
+        for name in path_names:
+            # Check if exists in current_parent
+            found_id = self.check_exists(current_parent_id, name)
+            if found_id:
+                current_parent_id = found_id
+            else:
+                # Create
+                current_parent_id = self.create_folder(current_parent_id, name)
+                if not current_parent_id:
+                     raise Exception(f"Failed to create folder {name}")
+        return current_parent_id
+
+    def copy_file_with_path(self, file_item, dest_root_id):
+        """
+        Stateless copy: Ensures path exists then copies file.
+        file_item: {'id': '...', 'name': '...', 'type': 'file', 'path': ['A', 'B']}
+        """
+        try:
+            # 1. Ensure path
+            target_folder_id = self.ensure_path_exists(dest_root_id, file_item['path'])
+            
+            # 2. Check if file exists
+            if self.check_exists(target_folder_id, file_item['name']):
+                return {"status": "skipped", "message": "File exists"}
+
+            # 3. Copy
+            body = {
+                'parents': [target_folder_id],
+                'name': file_item['name']
+            }
+            self.service.files().copy(
+                fileId=file_item['id'],
+                body=body,
+                supportsAllDrives=True
+            ).execute()
+            return {"status": "success"}
+            
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
