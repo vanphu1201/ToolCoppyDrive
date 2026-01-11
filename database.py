@@ -27,6 +27,7 @@ class UsageDatabase:
         print(f"✅ Using PostgreSQL database (Neon/Vercel)")
         try:
             self._init_db()
+            self.init_session_table()
         except Exception as e:
             print(f"❌ PostgreSQL connection failed: {e}")
             print("⚠️  Falling back to SQLite")
