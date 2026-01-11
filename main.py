@@ -150,41 +150,62 @@ async def start_copy(request: Request):
     if is_running:
         return JSONResponse({"status": "error", "message": "Tiến trình khác đang chạy!"})
     
-    # Get or create client_id from cookie
-    client_id = request.cookies.get('client_id')
-    if not client_id:
-        client_id = str(uuid.uuid4())
-    
-    # Check usage
-    user = db.get_or_create_user(client_id)
-    
-    # Payment gate: if usage >= 2 and not paid, require payment
-    if user['usage_count'] >= 2 and not user['is_paid']:
-        # Generate payment QR code
-        payment_code = f"DH{client_id[:8].upper()}"
-        amount = 50000
+    try:
+        # Check Auth first
+        token_path = 'token.json' 
+        if os.path.exists("/tmp/token.json"): 
+            token_path = "/tmp/token.json"
         
-        # SePay QR format with user's bank info
-        bank_name = "MBBank"
-        account_number = "0348880746"
-        account_name = "TRAN VAN PHU"
+        # Verify user is logged in
+        if not os.path.exists(token_path):
+            return JSONResponse({
+                "status": "error", 
+                "message": "Bạn chưa đăng nhập Google Drive. Vui lòng đăng nhập trước!"
+            })
         
-        qr_url = f"https://qr.sepay.vn/img?bank={bank_name}&acc={account_number}&amount={amount}&des={payment_code}"
+        # Get user email from Google token (this is the unique identifier)
+        from google.oauth2.credentials import Credentials
+        creds = Credentials.from_authorized_user_file(token_path)
         
-        response = JSONResponse({
-            "status": "payment_required",
-            "message": "Bạn đã sử dụng hết 2 lần miễn phí. Vui lòng thanh toán để tiếp tục.",
-            "qr_url": qr_url,
-            "amount": amount,
-            "payment_code": payment_code,
-            "account_name": account_name
-        })
+        # Get user info from Google
+        from googleapiclient.discovery import build
+        oauth_service = build('oauth2', 'v2', credentials=creds)
+        user_info = oauth_service.userinfo().get().execute()
+        user_email = user_info.get('email')
         
-        # Set cookie if new user
-        if not request.cookies.get('client_id'):
-            response.set_cookie(key='client_id', value=client_id, max_age=365*24*60*60)
+        if not user_email:
+            return JSONResponse({
+                "status": "error",
+                "message": "Không thể lấy thông tin tài khoản Google"
+            })
         
-        return response
+        # Use email as client_id (cannot be bypassed by clearing cookies)
+        client_id = user_email
+        
+        # Check usage
+        user = db.get_or_create_user(client_id)
+        
+        # Payment gate: if usage >= 2 and not paid, require payment
+        if user['usage_count'] >= 2 and not user['is_paid']:
+            # Generate payment QR code
+            payment_code = f"DH{hashlib.md5(client_id.encode()).hexdigest()[:8].upper()}"
+            amount = 50000
+            
+            # SePay QR format with user's bank info
+            bank_name = "MBBank"
+            account_number = "0348880746"
+            account_name = "TRAN VAN PHU"
+            
+            qr_url = f"https://qr.sepay.vn/img?bank={bank_name}&acc={account_number}&amount={amount}&des={payment_code}"
+            
+            return JSONResponse({
+                "status": "payment_required",
+                "message": "Bạn đã sử dụng hết 2 lần miễn phí. Vui lòng thanh toán để tiếp tục.",
+                "qr_url": qr_url,
+                "amount": amount,
+                "payment_code": payment_code,
+                "account_name": account_name
+            })
     
     try:
         # Check Auth
@@ -235,23 +256,17 @@ async def start_copy(request: Request):
                 
         threading.Thread(target=run_worker, daemon=True).start()
         
-        # Return response with cookie
-        response = JSONResponse({"status": "started"})
-        if not request.cookies.get('client_id'):
-            response.set_cookie(key='client_id', value=client_id, max_age=365*24*60*60)
-        return response
+        # Return response
+        return JSONResponse({"status": "started"})
     
     except Exception as e:
         print(f"❌ Error in start_copy: {str(e)}")
         import traceback
         traceback.print_exc()
-        response = JSONResponse({
+        return JSONResponse({
             "status": "error",
             "message": f"Lỗi hệ thống: {str(e)}"
         })
-        if not request.cookies.get('client_id'):
-            response.set_cookie(key='client_id', value=client_id, max_age=365*24*60*60)
-        return response
 
 @app.get("/api/payment-status")
 async def check_payment_status(request: Request):
