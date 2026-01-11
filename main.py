@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response, Header
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -9,7 +9,11 @@ import os
 import json
 import threading
 import queue
+import uuid
+import hashlib
+import secrets
 from drive_utils import DriveCopyWorker
+from database import UsageDatabase
 
 app = FastAPI()
 
@@ -20,6 +24,17 @@ templates = Jinja2Templates(directory="templates")
 # Global State (Single User Desktop App Mode)
 msg_queue = queue.Queue()
 is_running = False
+
+# Database
+db = UsageDatabase()
+
+# Webhook API Key - Tạo key ngẫu nhiên hoặc dùng key cố định
+# Bạn sẽ điền key này vào form SePay
+WEBHOOK_API_KEY = os.environ.get('SEPAY_WEBHOOK_KEY', 'SEPAY_' + secrets.token_urlsafe(32))
+print(f"\n{'='*60}")
+print(f"🔑 SEPAY WEBHOOK API KEY: {WEBHOOK_API_KEY}")
+print(f"📋 Copy key này và điền vào form SePay (trường API Key)")
+print(f"{'='*60}\n")
 
 def status_callback(message, progress=None, is_error=False):
     """Callback bridge for DriveCopyWorker to put messages into Queue."""
@@ -129,11 +144,42 @@ async def auth_callback(code: str):
 
 
 @app.post("/api/start_copy")
-async def start_copy(request: Request):
+async def start_copy(request: Request, response: Response):
     global is_running
     
     if is_running:
         return {"status": "error", "message": "Tiến trình khác đang chạy!"}
+    
+    # Get or create client_id from cookie
+    client_id = request.cookies.get('client_id')
+    if not client_id:
+        client_id = str(uuid.uuid4())
+        response.set_cookie(key='client_id', value=client_id, max_age=365*24*60*60)  # 1 year
+    
+    # Check usage
+    user = db.get_or_create_user(client_id)
+    
+    # Payment gate: if usage >= 2 and not paid, require payment
+    if user['usage_count'] >= 2 and not user['is_paid']:
+        # Generate payment QR code
+        payment_code = f"DH{client_id[:8].upper()}"
+        amount = 50000
+        
+        # SePay QR format with user's bank info
+        bank_name = "MBBank"
+        account_number = "0348880746"
+        account_name = "TRAN VAN PHU"
+        
+        qr_url = f"https://qr.sepay.vn/img?bank={bank_name}&acc={account_number}&amount={amount}&des={payment_code}"
+        
+        return {
+            "status": "payment_required",
+            "message": "Bạn đã sử dụng hết 2 lần miễn phí. Vui lòng thanh toán để tiếp tục.",
+            "qr_url": qr_url,
+            "amount": amount,
+            "payment_code": payment_code,
+            "account_name": account_name
+        }
     
     # Check Auth
     token_path = 'token.json' 
@@ -161,6 +207,9 @@ async def start_copy(request: Request):
             worker = DriveCopyWorker(AUTH_FILE_PATH, auth_mode='user', status_callback=status_callback)
             worker.run_copy(src, dest, limit, excluded_list, from_p, to_p)
             
+            # Increment usage count after successful copy
+            db.increment_usage(client_id)
+            
             msg_queue.put({"message": "✅ Đã hoàn tất sao chép!", "progress": 1.0, "done": True})
         except Exception as e:
             msg_queue.put({"message": f"Lỗi nghiêm trọng: {str(e)}", "error": True, "done": True})
@@ -170,6 +219,94 @@ async def start_copy(request: Request):
     threading.Thread(target=run_worker, daemon=True).start()
     
     return {"status": "started"}
+
+@app.get("/api/payment-status")
+async def check_payment_status(request: Request):
+    """Check if user has paid. For now, this is a simulated check."""
+    client_id = request.cookies.get('client_id')
+    if not client_id:
+        return {"paid": False, "message": "No client ID found"}
+    
+    user = db.get_user(client_id)
+    if not user:
+        return {"paid": False, "message": "User not found"}
+    
+    # TODO: Integrate with SePay API to check actual payment
+    # For now, return the database status
+    return {
+        "paid": user['is_paid'],
+        "usage_count": user['usage_count']
+    }
+
+@app.post("/api/mark-paid")
+async def mark_paid(request: Request):
+    """Debug endpoint to manually mark user as paid."""
+    client_id = request.cookies.get('client_id')
+    if not client_id:
+        return {"status": "error", "message": "No client ID"}
+    
+    db.mark_as_paid(client_id)
+    return {"status": "success", "message": "User marked as paid"}
+
+@app.post("/api/sepay-webhook")
+async def sepay_webhook(request: Request, authorization: str = Header(None)):
+    """Webhook endpoint to receive payment notifications from SePay."""
+    try:
+        # Verify API Key
+        if not authorization:
+            print("❌ Webhook rejected: Missing Authorization header")
+            return JSONResponse(
+                status_code=401,
+                content={"status": "error", "message": "Missing API Key"}
+            )
+        
+        # Extract API key from header (format: "apikey YOUR_KEY" or just "YOUR_KEY")
+        api_key = authorization.replace('apikey ', '').strip()
+        
+        if api_key != WEBHOOK_API_KEY:
+            print(f"❌ Webhook rejected: Invalid API Key: {api_key}")
+            return JSONResponse(
+                status_code=403,
+                content={"status": "error", "message": "Invalid API Key"}
+            )
+        
+        # Get webhook data
+        data = await request.json()
+        
+        # Log for debugging
+        print("✅ SePay Webhook received:", json.dumps(data, indent=2))
+        
+        # Extract payment info from SePay webhook
+        # SePay webhook format: {"content": "DH12345678", "amount": 50000, ...}
+        transfer_content = data.get('transferContent', '') or data.get('content', '')
+        transfer_amount = int(data.get('transferAmount', 0) or data.get('amount', 0))
+        
+        # Extract payment code (format: DH{client_id_prefix})
+        if transfer_content.startswith('DH') and len(transfer_content) >= 10:
+            payment_code = transfer_content[:10]  # DH + 8 chars
+            client_id_prefix = payment_code[2:].lower()
+            
+            # Find user by client_id prefix and amount
+            if transfer_amount >= 50000:
+                # Search for matching client_id in database
+                # Note: This is a simplified search - in production, store payment_code in DB
+                conn = sqlite3.connect(db.db_path)
+                cursor = conn.cursor()
+                cursor.execute('SELECT client_id FROM user_usage WHERE client_id LIKE ? AND is_paid = 0', (f'{client_id_prefix}%',))
+                result = cursor.fetchone()
+                conn.close()
+                
+                if result:
+                    client_id = result[0]
+                    db.mark_as_paid(client_id)
+                    print(f"✅ Payment confirmed for client: {client_id}")
+                    return {"status": "success", "message": "Payment confirmed"}
+        
+        return {"status": "ignored", "message": "No matching payment found"}
+        
+    except Exception as e:
+        print(f"Webhook error: {str(e)}")
+        return {"status": "error", "message": str(e)}
 
 @app.get("/api/stream_logs")
 async def stream_logs(request: Request):

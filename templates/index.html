@@ -134,6 +134,32 @@
         </div>
     </div>
 
+    <!-- Payment Modal -->
+    <div id="payment-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 9999; justify-content: center; align-items: center;">
+        <div style="background: #1e293b; border-radius: 16px; padding: 40px; max-width: 500px; border: 1px solid #F59E0B; text-align: center;">
+            <div style="font-size: 2rem; margin-bottom: 10px;">💳</div>
+            <h2 style="color: #F59E0B; margin-bottom: 10px;">Thanh toán để tiếp tục</h2>
+            <p style="color: #94a3b8; margin-bottom: 20px;" id="payment-message">Bạn đã sử dụng hết 2 lần miễn phí.</p>
+            
+            <div style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px;">
+                <img id="qr-code-img" src="" alt="QR Code" style="max-width: 100%; height: auto;">
+            </div>
+            
+            <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid #F59E0B; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
+                <div style="color: #F59E0B; font-weight: 600; margin-bottom: 5px;">Số tiền: <span id="payment-amount">50,000</span> VNĐ</div>
+                <div style="color: #94a3b8; font-size: 0.9rem;">Nội dung: <span id="payment-code" style="color: #fff; font-weight: 600;">-</span></div>
+            </div>
+            
+            <div style="color: #10B981; font-weight: 600; margin-bottom: 15px; display: none;" id="payment-success">
+                <i class="fas fa-check-circle"></i> Đã xác nhận thanh toán!
+            </div>
+            
+            <button id="close-modal-btn" style="background: #334155; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                Đóng
+            </button>
+        </div>
+    </div>
+
     <script>
         // DOM Elements
         const authSection = document.getElementById('auth-section');
@@ -262,6 +288,11 @@
                             startBtn.disabled = false;
                             startBtn.innerHTML = 'THỬ LẠI';
                         }
+                    } else if (result.status === 'payment_required') {
+                        // Show payment modal
+                        showPaymentModal(result);
+                        startBtn.disabled = false;
+                        startBtn.innerHTML = 'KÍCH HOẠT SAO CHÉP';
                     } else {
                         logText.textContent = "Lỗi: " + result.message;
                         startBtn.disabled = false;
@@ -274,6 +305,52 @@
                 }
             });
         }
+
+        // Payment Modal Logic
+        const paymentModal = document.getElementById('payment-modal');
+        const qrCodeImg = document.getElementById('qr-code-img');
+        const paymentMessage = document.getElementById('payment-message');
+        const paymentAmount = document.getElementById('payment-amount');
+        const paymentCode = document.getElementById('payment-code');
+        const paymentSuccess = document.getElementById('payment-success');
+        const closeModalBtn = document.getElementById('close-modal-btn');
+        
+        let paymentCheckInterval = null;
+
+        function showPaymentModal(data) {
+            paymentMessage.textContent = data.message;
+            qrCodeImg.src = data.qr_url;
+            paymentAmount.textContent = data.amount.toLocaleString();
+            paymentCode.textContent = data.payment_code;
+            paymentModal.style.display = 'flex';
+            paymentSuccess.style.display = 'none';
+            
+            // Start polling for payment status
+            paymentCheckInterval = setInterval(checkPaymentStatus, 3000);
+        }
+
+        function checkPaymentStatus() {
+            fetch('/api/payment-status')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.paid) {
+                        paymentSuccess.style.display = 'block';
+                        clearInterval(paymentCheckInterval);
+                        setTimeout(() => {
+                            paymentModal.style.display = 'none';
+                            location.reload();
+                        }, 2000);
+                    }
+                })
+                .catch(err => console.error('Payment check error:', err));
+        }
+
+        closeModalBtn.addEventListener('click', () => {
+            paymentModal.style.display = 'none';
+            if (paymentCheckInterval) {
+                clearInterval(paymentCheckInterval);
+            }
+        });
     </script>
 </body>
 
