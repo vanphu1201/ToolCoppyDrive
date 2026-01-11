@@ -29,7 +29,8 @@ class DriveCopyWorker:
         """Authenticates using Service Account or User Credentials."""
         SCOPES = [
             'https://www.googleapis.com/auth/drive',
-            'https://www.googleapis.com/auth/userinfo.email'
+            'https://www.googleapis.com/auth/userinfo.email',
+            'openid'
         ]
         creds = None
         
@@ -83,7 +84,8 @@ class DriveCopyWorker:
         from google_auth_oauthlib.flow import InstalledAppFlow
         SCOPES = [
             'https://www.googleapis.com/auth/drive',
-            'https://www.googleapis.com/auth/userinfo.email'
+            'https://www.googleapis.com/auth/userinfo.email',
+            'openid'
         ]
         
         # If no redirect_uri, default to OOB (which is now blocked for new apps, but kept for legacy)
