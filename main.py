@@ -173,6 +173,8 @@ async def start_copy(request: Request):
         user_info = oauth_service.userinfo().get().execute()
         user_email = user_info.get('email')
         
+        print(f"🔍 User email retrieved: {user_email}")
+        
         if not user_email:
             return JSONResponse({
                 "status": "error",
@@ -181,9 +183,11 @@ async def start_copy(request: Request):
         
         # Use email as client_id (cannot be bypassed by clearing cookies)
         client_id = user_email
+        print(f"📧 Using client_id: {client_id}")
         
         # Check usage
         user = db.get_or_create_user(client_id)
+        print(f"📊 Current usage for {client_id}: {user['usage_count']} / 2, Paid: {user['is_paid']}")
         
         # Payment gate: if usage >= 2 and not paid, require payment
         if user['usage_count'] >= 2 and not user['is_paid']:

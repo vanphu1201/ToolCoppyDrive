@@ -11,8 +11,10 @@ class UsageDatabase:
             # Check if running on Vercel/serverless (read-only filesystem)
             if os.path.exists('/tmp'):
                 db_path = '/tmp/usage.db'
+                print(f"⚠️  Using ephemeral database: {db_path} (will reset on deploy)")
             else:
                 db_path = 'usage.db'
+                print(f"✅ Using persistent database: {db_path}")
         
         self.db_path = db_path
         self._init_db()
@@ -86,6 +88,8 @@ class UsageDatabase:
         
         conn.commit()
         conn.close()
+        
+        print(f"✅ Incremented usage for {client_id} in {self.db_path}")
     
     def mark_as_paid(self, client_id):
         """Mark user as paid."""
