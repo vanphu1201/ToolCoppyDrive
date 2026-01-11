@@ -5,7 +5,15 @@ from datetime import datetime
 class UsageDatabase:
     """Simple SQLite database to track user usage and payment status."""
     
-    def __init__(self, db_path='usage.db'):
+    def __init__(self, db_path=None):
+        # Use /tmp for serverless environments (Vercel, AWS Lambda, etc.)
+        if db_path is None:
+            # Check if running on Vercel/serverless (read-only filesystem)
+            if os.path.exists('/tmp'):
+                db_path = '/tmp/usage.db'
+            else:
+                db_path = 'usage.db'
+        
         self.db_path = db_path
         self._init_db()
     
