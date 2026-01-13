@@ -374,14 +374,12 @@ async def scan_folder(request: Request):
         exclude = data.get("exclude_str", "")
         excluded_list = [x.strip() for x in exclude.split(",") if x.strip()]
         
+        import shutil
+        shutil.copy(token_path, os.path.join(TEMP_DIR, 'token.json'))
+
         worker = DriveCopyWorker(AUTH_FILE_PATH, auth_mode='user')
         # Manually load creds to worker (hacky but works since we have file)
         # Actually worker init does it if token.json exists.
-        # We need to make sure worker uses OUR token_path
-        # DriveCopyWorker logic prefers 'token.json' or '/tmp/token.json'.
-        # We might need to copy our specific token there.
-        import shutil
-        shutil.copy(token_path, os.path.join(TEMP_DIR, 'token.json'))
         
         # 3. Scan
         src_id = worker.extract_folder_id(src)
@@ -390,6 +388,9 @@ async def scan_folder(request: Request):
         # Check access & Get Root Name
         try:
             worker._get_service() # Init service
+            if not worker.service:
+                 return JSONResponse({"status": "error", "message": "Lỗi xác thực Google Drive (Service is None). Vui lòng đăng nhập lại."})
+                 
             file_meta = worker.service.files().get(fileId=src_id, supportsAllDrives=True).execute()
             root_name = file_meta.get('name', 'Copied_Folder')
         except Exception as e:
