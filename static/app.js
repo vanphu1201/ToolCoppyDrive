@@ -160,6 +160,11 @@ if (form) {
                 for (let i = 0; i < totalItems; i += BATCH_SIZE) {
                     const chunk = items.slice(i, i + BATCH_SIZE);
 
+                    // Show current file names
+                    const fileNames = chunk.map(item => item.name).join(', ');
+                    logText.innerHTML = `Đang xử lý... ${processedCount}/${totalItems}<br>
+                                         <span style="color: #60A5FA"><i class="fas fa-sync fa-spin"></i> Đang copy: ${fileNames}</span>`;
+
                     try {
                         const batchRes = await fetch('/api/copy-batch', {
                             method: 'POST',
