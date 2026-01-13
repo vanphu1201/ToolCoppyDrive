@@ -12,6 +12,11 @@ import queue
 import uuid
 import hashlib
 import secrets
+import tempfile
+
+# Determine Temp Directory (Cross-platform)
+TEMP_DIR = tempfile.gettempdir()
+
 from drive_utils import DriveCopyWorker
 from database import UsageDatabase
 from dotenv import load_dotenv
@@ -73,7 +78,7 @@ def check_auth(request: Request):
     session_id = request.cookies.get("session_id")
     if not session_id:
         # Fallback to file check (legacy/local)
-        exists = os.path.exists('token.json') or os.path.exists('/tmp/token.json')
+        exists = os.path.exists('token.json') or os.path.exists(os.path.join(TEMP_DIR, 'token.json'))
         return {"authenticated": exists}
     
     token_json = db.get_session(session_id)
@@ -89,7 +94,7 @@ async def startup_event():
     secret_json = os.environ.get("GOOGLE_CLIENT_SECRET_JSON")
     if secret_json:
         # Write to /tmp for Vercel (Read-only file system)
-        AUTH_FILE_PATH = "/tmp/client_secret.json"
+        AUTH_FILE_PATH = os.path.join(TEMP_DIR, "client_secret.json")
         with open(AUTH_FILE_PATH, "w") as f:
             f.write(secret_json)
         print(f"Created client_secret.json from Env Var at {AUTH_FILE_PATH}")
@@ -104,7 +109,7 @@ async def login_google(request: Request):
     """Redirects to Google Auth with Vercel URL."""
     global auth_worker
     try:
-        if os.path.exists('token.json') or os.path.exists('/tmp/token.json'):
+        if os.path.exists('token.json') or os.path.exists(os.path.join(TEMP_DIR, 'token.json')):
              return {"status": "already_logged_in"}
 
         if not os.path.exists(AUTH_FILE_PATH):
@@ -193,15 +198,15 @@ async def start_copy(request: Request):
             token_json = db.get_session(session_id)
             if token_json:
                 # Write to temp file for worker to use
-                token_path = f"/tmp/token_{session_id}.json"
+                token_path = os.path.join(TEMP_DIR, f"token_{session_id}.json")
                 with open(token_path, "w") as f:
                     f.write(token_json)
                 print(f"✅ Loaded token from DB for session {session_id}")
         
         # 2. Fallback to global file (Legacy/Local)
         if not token_path:
-            if os.path.exists("/tmp/token.json"):
-                token_path = "/tmp/token.json"
+            if os.path.exists(os.path.join(TEMP_DIR, "token.json")):
+                token_path = os.path.join(TEMP_DIR, "token.json")
             elif os.path.exists("token.json"):
                 token_path = "token.json"
 
@@ -332,7 +337,7 @@ async def scan_folder(request: Request):
         if session_id:
             token_json = db.get_session(session_id)
             if token_json:
-                token_path = f"/tmp/token_{session_id}.json"
+                token_path = os.path.join(TEMP_DIR, f"token_{session_id}.json")
                 with open(token_path, "w") as f: f.write(token_json)
         
         if not token_path or not os.path.exists(token_path):
@@ -376,7 +381,7 @@ async def scan_folder(request: Request):
         # DriveCopyWorker logic prefers 'token.json' or '/tmp/token.json'.
         # We might need to copy our specific token there.
         import shutil
-        shutil.copy(token_path, '/tmp/token.json')
+        shutil.copy(token_path, os.path.join(TEMP_DIR, 'token.json'))
         
         # 3. Scan
         src_id = worker.extract_folder_id(src)
@@ -418,7 +423,7 @@ async def copy_batch(request: Request):
         # 1. Auth (Simplified - assume valid from Scan phase, but still check existence)
         # For Vercel, we need to re-verify or trust session.
         session_id = request.cookies.get("session_id")
-        token_path = "/tmp/token.json" 
+        token_path = os.path.join(TEMP_DIR, "token.json") 
         # Ideally we re-validate session every time but for speed we rely on token file presence or re-extract
         if session_id:
              token_json = db.get_session(session_id)
@@ -487,11 +492,11 @@ async def check_payment_status(request: Request):
         if session_id:
             token_json = db.get_session(session_id)
             if token_json:
-                token_path = f"/tmp/token_{session_id}.json"
+                token_path = os.path.join(TEMP_DIR, f"token_{session_id}.json")
                 with open(token_path, "w") as f:
                     f.write(token_json)
-        elif os.path.exists("/tmp/token.json"):
-            token_path = "/tmp/token.json"
+        elif os.path.exists(os.path.join(TEMP_DIR, "token.json")):
+            token_path = os.path.join(TEMP_DIR, "token.json")
         
         if not os.path.exists(token_path):
             return {"paid": False, "message": "Not logged in"}
@@ -533,8 +538,8 @@ async def mark_paid(request: Request):
                 token_path = f"/tmp/token_{session_id}.json"
                 with open(token_path, "w") as f:
                     f.write(token_json)
-        elif os.path.exists("/tmp/token.json"):
-            token_path = "/tmp/token.json"
+        elif os.path.exists(os.path.join(TEMP_DIR, "token.json")):
+            token_path = os.path.join(TEMP_DIR, "token.json")
         
         if not os.path.exists(token_path):
             return {"status": "error", "message": "Not logged in"}
@@ -624,6 +629,9 @@ async def sepay_webhook(request: Request, authorization: str = Header(None)):
         # Extract API key (format: "apikey YOUR_KEY" or "Bearer YOUR_KEY" or just "YOUR_KEY")
         api_key = authorization.replace('apikey ', '').replace('Bearer ', '').strip()
         
+        # Determine expected KEY (env var)
+        WEBHOOK_API_KEY = os.environ.get("SEPAY_WEBHOOK_KEY", "DEFAULT_KEY") # Add fallback or ensure env is read
+
         if api_key != WEBHOOK_API_KEY:
             print(f"❌ Webhook: Invalid API key")
             return {"status": "error", "message": "Unauthorized"}
@@ -745,7 +753,7 @@ async def force_check_payment(request: Request):
         if session_id:
             token_json = db.get_session(session_id)
             if token_json:
-                token_path = f"/tmp/token_{session_id}.json"
+                token_path = os.path.join(TEMP_DIR, f"token_{session_id}.json")
                 with open(token_path, "w") as f: f.write(token_json)
         
         if not os.path.exists(token_path):

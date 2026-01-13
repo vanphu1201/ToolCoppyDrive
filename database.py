@@ -52,7 +52,11 @@ class UsageDatabase:
             )
         ''')
         conn.commit()
+        conn.commit()
         conn.close()
+        
+        # Initialize auth sessions table for SQLite as well
+        self.init_session_table()
     
     def _init_db(self):
         """Initialize database and create tables if they don't exist."""

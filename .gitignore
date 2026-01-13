@@ -6,3 +6,6 @@ venv/
 client_secret.json
 token.json
 service_account.json
+secret.json
+*.db
+*.log

@@ -2,6 +2,7 @@ import os
 import time
 import re
 import sys
+import tempfile
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
 from googleapiclient.errors import HttpError
@@ -50,10 +51,10 @@ class DriveCopyWorker:
                         self.creds = Credentials.from_authorized_user_file('token.json', SCOPES)
                     except Exception:
                         self.creds = None
-                elif os.path.exists('/tmp/token.json'):
+                elif os.path.exists(os.path.join(tempfile.gettempdir(), 'token.json')):
                      # Check tmp for Vercel
                     try:
-                        self.creds = Credentials.from_authorized_user_file('/tmp/token.json', SCOPES)
+                        self.creds = Credentials.from_authorized_user_file(os.path.join(tempfile.gettempdir(), 'token.json'), SCOPES)
                     except Exception:
                         self.creds = None
 
@@ -111,7 +112,7 @@ class DriveCopyWorker:
             with open('token.json', 'w') as token:
                 token.write(self.creds.to_json())
         except Exception:
-            with open('/tmp/token.json', 'w') as token:
+            with open(os.path.join(tempfile.gettempdir(), 'token.json'), 'w') as token:
                 token.write(self.creds.to_json())
                 
         # Re-init service
