@@ -20,6 +20,7 @@ const paymentSuccess = document.getElementById('payment-success');
 const closeModalBtn = document.getElementById('close-modal-btn');
 
 let paymentCheckInterval = null;
+let currentScanItems = []; // Store scan result globally
 
 // Check Auth Status
 function checkAuth() {
@@ -139,12 +140,18 @@ if (form) {
                 resetUI();
                 return;
             } else if (scanResult.status === 'success') {
+                // Save items for Export
+                currentScanItems = scanResult.items || [];
+                document.getElementById('export-container').style.display = 'block';
+
                 const items = scanResult.items;
                 const rootName = scanResult.root_name;
                 const totalItems = items.length;
                 let processedCount = 0;
+                let skippedCount = 0;
+                let copiedCount = 0;
 
-                logText.textContent = `Đã tìm thấy ${totalItems} mục. Bắt đầu sao chép...`;
+                logText.textContent = `Đã tìm thấy ${totalItems} mục. Bắt đầu đồng bộ...`;
                 progressFill.style.width = "5%";
 
                 // PHASE 2: BATCH COPY
@@ -167,13 +174,22 @@ if (form) {
 
                         if (batchData.status !== 'success') {
                             console.error("Batch Error:", batchData);
-                            logText.textContent = `Lỗi sao chép batch ${Math.ceil(i / BATCH_SIZE) + 1}: ${batchData.message}`;
-                            // Optional: Break or Continue? Continue best effort.
+                            logText.textContent = `Lỗi batch ${Math.ceil(i / BATCH_SIZE) + 1}: ${batchData.message}`;
                         } else {
+                            // Count details
+                            if (batchData.results) {
+                                batchData.results.forEach(r => {
+                                    if (r.status === 'skipped') skippedCount++;
+                                    else if (r.status === 'success' || r.status === 'created') copiedCount++;
+                                });
+                            }
+
                             processedCount += chunk.length;
                             const percent = Math.min(Math.round((processedCount / totalItems) * 100), 99);
                             progressFill.style.width = percent + "%";
-                            logText.textContent = `Đang sao chép... ${processedCount}/${totalItems}`;
+                            logText.innerHTML = `Đang xử lý... ${processedCount}/${totalItems}<br>
+                                                 <span style="color: #10B981"><i class="fas fa-check"></i> Đã sao chép: ${copiedCount}</span> | 
+                                                 <span style="color: #FBBF24"><i class="fas fa-sync"></i> Đã đồng bộ (bỏ qua): ${skippedCount}</span>`;
                         }
 
                     } catch (batchErr) {
@@ -282,3 +298,50 @@ paymentModal.addEventListener('click', (e) => {
         }
     }
 });
+
+// Export Function
+function exportData(type) {
+    if (!currentScanItems || currentScanItems.length === 0) {
+        alert("Chưa có dữ liệu scan!");
+        return;
+    }
+
+    let filteredItems = [];
+    if (type === 'all') {
+        filteredItems = currentScanItems;
+    } else if (type === 'video') {
+        filteredItems = currentScanItems.filter(item => item.mimeType && item.mimeType.startsWith('video/'));
+    } else if (type === 'file') {
+        filteredItems = currentScanItems.filter(item => !item.mimeType || !item.mimeType.startsWith('video/')); // Non-videos (ignore folders as they are structure)
+        // Check if we want to exclude actual folders from "Files" list. Usually yes.
+        filteredItems = filteredItems.filter(item => item.type !== 'folder');
+    }
+
+    if (filteredItems.length === 0) {
+        alert("Không tìm thấy dữ liệu phù hợp!");
+        return;
+    }
+
+    let content = "";
+    filteredItems.forEach(item => {
+        // Path format: Folder / Subfolder / Filename
+        const fullPath = item.path ? item.path.join(" / ") : "";
+        const pathStr = fullPath ? `[${fullPath}] ` : "";
+
+        // Prefer view link, callback to content link
+        const link = item.webViewLink || item.webContentLink || "No Link";
+
+        content += `${pathStr}${item.name} -> ${link}\n`;
+    });
+
+    // Create Download
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `export_${type}_${new Date().getTime()}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+}

@@ -95,6 +95,24 @@
                 </button>
             </form>
 
+            <!-- Export Options -->
+            <div id="export-container"
+                style="display: none; margin-top: 20px; border-top: 1px solid #334155; padding-top: 15px;">
+                <div class="label" style="margin-bottom: 10px;"><i class="fas fa-file-export"></i> Xuất dữ liệu links
+                </div>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <button type="button" class="btn-secondary" onclick="exportData('all')">
+                        <i class="fas fa-list"></i> Tất cả
+                    </button>
+                    <button type="button" class="btn-secondary" onclick="exportData('video')">
+                        <i class="fas fa-video"></i> Chỉ Video
+                    </button>
+                    <button type="button" class="btn-secondary" onclick="exportData('file')">
+                        <i class="fas fa-file"></i> Chỉ File
+                    </button>
+                </div>
+            </div>
+
             <!-- Progress -->
             <div id="progress-container">
                 <div class="progress-bg">

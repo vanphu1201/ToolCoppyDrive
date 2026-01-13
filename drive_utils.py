@@ -405,7 +405,7 @@ class DriveCopyWorker:
             try:
                 results = self.service.files().list(
                     q=query,
-                    fields='nextPageToken, files(id, name, mimeType, size)',
+                    fields='nextPageToken, files(id, name, mimeType, size, webViewLink, webContentLink)',
                     pageToken=token,
                     supportsAllDrives=True,
                     includeItemsFromAllDrives=True,
@@ -420,7 +420,9 @@ class DriveCopyWorker:
                         'name': f['name'],
                         'type': item_type,
                         'path': current_path, # List of folder names from root
-                        'size': int(f.get('size', 0))
+                        'size': int(f.get('size', 0)),
+                        'webViewLink': f.get('webViewLink', ''),
+                        'webContentLink': f.get('webContentLink', '')
                     }
                     items_flat.append(item)
                     
