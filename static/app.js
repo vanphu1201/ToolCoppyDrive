@@ -4,6 +4,7 @@ const authWarning = document.getElementById('auth-warning');
 const btnLogin = document.getElementById('btn-login');
 const startBtn = document.getElementById('start-btn');
 const authStatus = document.getElementById('auth-status');
+const btnLogout = document.getElementById('btn-logout');
 const form = document.getElementById('copy-form');
 const progressContainer = document.getElementById('progress-container');
 const progressFill = document.getElementById('progress-fill');
@@ -34,6 +35,7 @@ function checkAuth() {
 
                 authSection.style.display = 'none';
                 startBtn.disabled = false;
+                if (btnLogout) btnLogout.style.display = 'block';
             } else {
                 // Not Logged In
                 authStatus.innerHTML = '<i class="fas fa-times-circle"></i> Chưa kết nối';
@@ -43,6 +45,7 @@ function checkAuth() {
 
                 authSection.style.display = 'block';
                 startBtn.disabled = true;
+                if (btnLogout) btnLogout.style.display = 'none';
             }
         })
         .catch(err => console.error("Auth Check Error:", err));
@@ -76,6 +79,24 @@ if (btnLogin) {
             alert("Lỗi kết nối server: " + err);
             btnLogin.innerHTML = '<i class="fab fa-google"></i> Đăng nhập';
             btnLogin.disabled = false;
+        }
+    });
+}
+
+// Logout Button
+if (btnLogout) {
+    btnLogout.addEventListener('click', async () => {
+        if (!confirm("Bạn có chắc chắn muốn đăng xuất?")) return;
+
+        try {
+            const res = await fetch('/api/logout', { method: 'POST' });
+            const data = await res.json();
+            if (data.status === 'success') {
+                window.location.reload();
+            }
+        } catch (err) {
+            console.error("Logout Error:", err);
+            window.location.reload(); // Force reload anyway
         }
     });
 }

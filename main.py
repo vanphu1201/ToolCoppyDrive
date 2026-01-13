@@ -180,6 +180,13 @@ async def auth_callback(code: str, request: Request):
     except Exception as e:
         return HTMLResponse(f"<h1>Lỗi Callback: {e}</h1>")
 
+@app.post("/api/logout")
+async def logout(response: Response):
+    """Clears the session cookie."""
+    response = JSONResponse({"status": "success", "message": "Logged out"})
+    response.delete_cookie("session_id")
+    return response
+
 
 
 @app.post("/api/start_copy")
